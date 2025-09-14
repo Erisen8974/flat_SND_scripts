@@ -16,6 +16,12 @@ plugins_to_disable:
 - TextAdvance
 - YesAlready
 
+configs:
+  MaxResearch:
+    default: false
+    description: Get research to cap instead of just target
+    type: bool
+    required: false
 [[End Metadata]]
 --]=====]
 --[[
@@ -525,7 +531,6 @@ function StopScript(message, caller, ...)
     IPC.Lifestream.Abort()
     IPC.visland.StopRoute()
     IPC.vnavmesh.Stop()
-    yield("/snd stop all")
     luanet.error(logify(message, ...))
 end
 
@@ -2000,4 +2005,4 @@ function fish_relic(max)
         end
     until finished and ready
 end
-fish_relic(false)
+fish_relic(Config.Get("MaxResearch"))
