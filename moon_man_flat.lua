@@ -25,9 +25,13 @@ configs:
     description: Interact with summoning bell when AR is ready.
   GambaLimit:
     default: 8000
-    description: Cosmo Credits to start start spinning the wheel. Must configure ICE to do gamba! 0 to disable.
+    description: Lunar Credits to start start spinning the wheel. Must configure ICE to do gamba! 0 to disable.
     min: 0
     max: 10000
+
+  DebugMessages:
+    default: false
+    description: Show debug logs
 [[End Metadata]]
 --]=====]
 --[[
@@ -2004,7 +2008,7 @@ function get_relic_exp(max)
     return exp_needed, completed
 end
 
-function get_cosmo_credits()
+function get_lunar_credits()
     local addon = Addons.GetAddon("WKSHud")
     if not addon.Exists or not addon.Ready then
         StopScript("No WKS Hud", CallerName(false), "Failed to get the HUD")
@@ -2014,10 +2018,14 @@ function get_cosmo_credits()
 end
 
 function do_upkeep()
-    if GAMBA_TIME > 0 and get_cosmo_credits() >= GAMBA_TIME then
+    log_(LEVEL_DEBUG, log, "Doing upkeep")
+    log_(LEVEL_DEBUG, log, "GAMBA_TIME:", GAMBA_TIME, "PROCESS_RETAINERS:", PROCESS_RETAINERS)
+    if GAMBA_TIME > 0 and get_lunar_credits() >= GAMBA_TIME then
+        log_(LEVEL_DEBUG, log, "Starting gamba")
         start_gamba()
     end
     if PROCESS_RETAINERS and IPC.AutoRetainer.AreAnyRetainersAvailableForCurrentChara() then
+        log_(LEVEL_DEBUG, log, "Processing retainers")
         moon_talk("Summoning Bell")
         repeat
             wait(1)
@@ -2028,6 +2036,8 @@ function do_upkeep()
 end
 
 function fish_relic(max)
+    log_(LEVEL_DEBUG, log, "Fish relic, Gamba limit:", GAMBA_TIME, "Max research:", max, "Handle retainers:",
+        PROCESS_RETAINERS)
     repeat
         do_upkeep()
         local exp, finished = get_relic_exp(max)
@@ -2053,6 +2063,8 @@ function fish_relic(max)
 end
 
 function gather_relic(max)
+    log_(LEVEL_DEBUG, log, "Gather relic, Gamba limit:", GAMBA_TIME, "Max research:", max, "Handle retainers:",
+        PROCESS_RETAINERS)
     repeat
         local finished, ready, exp = false, false, nil
         if ice_is_running() then
@@ -2086,19 +2098,23 @@ local GAMBA_TIME = Config.Get("GambaLimit")
 local PROCESS_RETAINERS = Config.Get("HandleRetainers")
 local MAX_RESEARCH = Config.Get("MaxResearch")
 
+if Config.Get("DebugMessages") then
+    debug_level = LEVEL_DEBUG
+end
+
 local current_job = Player.Job
 
-log("Starting auto relic on job", current_job.Name, "(" .. current_job.Abbreviation .. ")")
-log("Gamba limit:", GAMBA_TIME, "Max research:", MAX_RESEARCH, "Handle retainers:", PROCESS_RETAINERS)
+log_(LEVEL_INFO, log, "Starting auto relic on job", current_job.Name, "(" .. current_job.Abbreviation .. ")")
+log_(LEVEL_INFO, log, "Gamba limit:", GAMBA_TIME, "Max research:", MAX_RESEARCH, "Handle retainers:", PROCESS_RETAINERS)
 
 if current_job.Abbreviation == "FSH" then
     fish_relic(MAX_RESEARCH)
 elseif current_job.IsGatherer then
     gather_relic(MAX_RESEARCH)
 elseif current_job.IsCrafter then
-    log("Crafters arent supported yet")                                  --craft_relic(MAX_RESEARCH)
+    log_(LEVEL_ERROR, log, "Crafters arent supported yet")                                  --craft_relic(MAX_RESEARCH)
 else
-    log("Invalid job", current_job.Name, "only gatherers are supported") -- update message when crafters are supported
+    log_(LEVEL_ERROR, log, "Invalid job", current_job.Name, "only gatherers are supported") -- update message when crafters are supported
 end
 
-log("Finished auto relic on job", current_job.Name, "(" .. current_job.Abbreviation .. ")")
+log_(LEVEL_INFO, log, "Finished auto relic on job", current_job.Name, "(" .. current_job.Abbreviation .. ")")
