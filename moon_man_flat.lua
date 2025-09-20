@@ -20,8 +20,14 @@ configs:
   MaxResearch:
     default: false
     description: Get research to cap instead of just target
-    type: bool
-    required: false
+  HandleRetainers:
+    default: true
+    description: Interact with summoning bell when AR is ready.
+  GambaLimit:
+    default: 8000
+    description: Cosmo Credits to start start spinning the wheel. Must configure ICE to do gamba! 0 to disable.
+    min: 0
+    max: 10000
 [[End Metadata]]
 --]=====]
 --[[
@@ -248,7 +254,7 @@ function close_talk(first, ...)
     local ti = ResetTimeout()
     while (first ~= nil and not any_addons_ready(first, ...)) or (first == nil and GetCharacterCondition(32)) do
         yield("/click Talk Click")
-        CheckTimeout(10, ti, CallerName(false), "Finishing talking")
+        CheckTimeout(60, ti, CallerName(false), "Finishing talking")
         wait(.1)
     end
 end
@@ -743,20 +749,36 @@ function make_set(content_type, ...)
     return l
 end
 
+function deref_pointer(ptr, ctype)
+    if Unsafe == nil then
+        _, Unsafe = load_type("System.Runtime.CompilerServices.Unsafe", "System.Runtime")
+    end
+    local AsRef = get_generic_method(Unsafe, "AsRef", { ctype })
+    if AsRef == nil or AsRef.Invoke == nil then
+        StopScript("Failed to get AsRef method", CallerName(false), "ctype:", ctype)
+    end
+    local arg = luanet.make_array(Object, { ptr })
+    local ref = AsRef:Invoke(nil, arg)
+    if ref == arg then
+        StopScript("Failed to deref pointer", CallerName(false), "pointer:", ptr, "ctype:", ctype)
+    end
+    return ref
+end
+
 function assembly_name(inputstr)
     for str in string.gmatch(inputstr, "[^%.]+") do
         return str
     end
 end
 
-function load_type(type_path)
-    local assembly = assembly_name(type_path)
+function load_type(type_path, assembly)
+    assembly = default(assembly, assembly_name(type_path))
     log_(LEVEL_VERBOSE, log, "Loading assembly", assembly)
     luanet.load_assembly(assembly)
     log_(LEVEL_VERBOSE, log, "Wrapping type", type_path)
     local type_var = luanet.import_type(type_path)
     log_(LEVEL_VERBOSE, log, "Wrapped type", type_var)
-    return type_var
+    return type_var, luanet.ctype(type_var)
 end
 
 function get_method(type, method_name, binding)
@@ -818,7 +840,11 @@ function dump_type_info(type, show_what, object)
         local meth = type:GetMethods(binding_flags)
         log(meth.Length, "Methods")
         for i = 0, meth.Length - 1, 1 do
-            log(tostring(i) .. ':', meth[i].Name)
+            local extra = ""
+            if meth[i].IsGenericMethodDefinition then
+                extra = "<" .. tostring(meth[i]:GetGenericArguments().Length) .. ">"
+            end
+            log(tostring(i) .. ':', meth[i].Name .. extra)
         end
     end
 
@@ -901,13 +927,7 @@ end
 --- ########################
 --- ####### Generics #######
 --- ########################
-function get_generic_method(object, method_name, genericTypes)
-    local targetType
-    if object.GetType then
-        targetType = object:GetType()
-    else
-        targetType = object
-    end
+function get_generic_method(targetType, method_name, genericTypes)
     local genericArgsArr = luanet.make_array(Type, genericTypes)
     local methods = targetType:GetMethods()
     for i = 0, methods.Length - 1 do
@@ -961,7 +981,7 @@ function require_ipc(ipc_signature, result_type, arg_types)
         end
         arg_types[i] = Type.GetType(v)
     end
-    local method = get_generic_method(Svc.PluginInterface, 'GetIpcSubscriber', arg_types)
+    local method = get_generic_method(Svc.PluginInterface:GetType(), 'GetIpcSubscriber', arg_types)
     if method.Invoke == nil then
         StopScript("GetIpcSubscriber not found", CallerName(false), "No IPC subscriber for", #arg_types, "arguments")
     end
@@ -1004,7 +1024,7 @@ function get_shared_data(tag, data_type)
     if shared_data_cache[tag] ~= nil then
         return shared_data_cache[tag]
     end
-    local method = get_generic_method(Svc.PluginInterface, 'GetData', { Type.GetType(data_type) })
+    local method = get_generic_method(Svc.PluginInterface:GetType(), 'GetData', { Type.GetType(data_type) })
     local sig = luanet.make_array(Object, { tag })
     local so = method:Invoke(Svc.PluginInterface, sig)
     if so == sig then
@@ -1115,7 +1135,7 @@ function walk_path(path, fly, range, stop_if_stuck)
     local pos = path[path.Count - 1]
     local ti = ResetTimeout()
     IPC.vnavmesh.MoveTo(path, fly)
-    if not GetCharacterCondition(4) and path_length(path) > 40 then
+    if not GetCharacterCondition(4) and path_length(path) > 30 then
         Actions.ExecuteGeneralAction(9)
     end
     local last_pos
@@ -1632,6 +1652,8 @@ local WALK_THRESHOLD = 100
 local RETURN_TO_SPOT = true
 local RETURN_RADIUS = 3
 local start_spot = Player.Entity.Position
+local GAMBA_TIME = 8000
+local PROCESS_RETAINERS = true
 
 
 function ice_only_mission(s)
@@ -1757,7 +1779,7 @@ function moon_talk(who)
     local e = get_closest_entity(who, true)
     e:SetAsTarget()
     e:Interact()
-    close_talk("SelectString", "SelectIconString")
+    close_talk("SelectString", "SelectIconString", "RetainerList")
 end
 
 function report_research(class)
@@ -1982,8 +2004,32 @@ function get_relic_exp(max)
     return exp_needed, completed
 end
 
+function get_cosmo_credits()
+    local addon = Addons.GetAddon("WKSHud")
+    if not addon.Exists or not addon.Ready then
+        StopScript("No WKS Hud", CallerName(false), "Failed to get the HUD")
+    end
+
+    return tonumber(addon:GetAtkValue(6).ValueString)
+end
+
+function do_upkeep()
+    if GAMBA_TIME > 0 and get_cosmo_credits() >= GAMBA_TIME then
+        start_gamba()
+    end
+    if PROCESS_RETAINERS and IPC.AutoRetainer.AreAnyRetainersAvailableForCurrentChara() then
+        moon_talk("Summoning Bell")
+        repeat
+            wait(1)
+        until not IPC.AutoRetainer.IsBusy()
+        close_addon("RetainerList")
+        close_talk()
+    end
+end
+
 function fish_relic(max)
     repeat
+        do_upkeep()
         local exp, finished = get_relic_exp(max)
         local ready = true
         for t, need in pairs(exp) do
@@ -2005,4 +2051,49 @@ function fish_relic(max)
         end
     until finished and ready
 end
-fish_relic(Config.Get("MaxResearch"))
+
+function gather_relic(max)
+    repeat
+        local finished, ready, exp = false, false, nil
+        if ice_is_running() then
+            wait(1)
+        else
+            do_upkeep()
+            exp, finished = get_relic_exp(max)
+            ready = true
+            for t, need in pairs(exp) do
+                if need > 0 then
+                    ready = false
+                    log_(LEVEL_INFO, log, "Need", need, "type", t, "research")
+
+                    ice_setting("OnlyGrabMission", false)
+                    ice_setting("StopAfterCurrent", true)
+                    ice_setting("XPRelicGrind", true)
+                    ice_setting("StopOnceHitCosmoCredits", false)
+                    ice_setting("StopOnceHitLunarCredits", false)
+
+                    start_ice_once()
+                    break
+                end
+            end
+            if ready and not finished then
+                report_research_safe()
+            end
+        end
+    until finished and ready
+end
+local GAMBA_TIME = Config.Get("GambaLimit")
+local PROCESS_RETAINERS = Config.Get("HandleRetainers")
+local MAX_RESEARCH = Config.Get("MaxResearch")
+
+local current_job = Player.Job
+
+if current_job.Abbreviation == "FSH" then
+    fish_relic(MAX_RESEARCH)
+elseif current_job.IsGatherer then
+    gather_relic(MAX_RESEARCH)
+elseif current_job.IsCrafter then
+    log("Crafters arent supported yet")                                  --craft_relic(MAX_RESEARCH)
+else
+    log("Invalid job", current_job.Name, "only gatherers are supported") -- update message when crafters are supported
+end
