@@ -29,6 +29,11 @@ configs:
     min: 0
     max: 10000
 
+  RelicJobs:
+    description: Jobs to cycle through completing the relic. Dont add any to only run on current job.
+    is_choice: false
+    choices: []
+
   DebugMessages:
     default: false
     description: Show debug logs
@@ -1041,12 +1046,12 @@ end
 function release_shared_data(tag)
     if tag == nil then
         for t, _ in pairs(shared_data_cache) do
-            log_(LEVEL_DEBUG, log, "Releasing shared data", t)
+            log_(LEVEL_VERBOSE, log, "Releasing shared data", t)
             Svc.PluginInterface:RelinquishData(t)
         end
         shared_data_cache = {}
     else
-        log_(LEVEL_DEBUG, log, "Releasing shared data", tag)
+        log_(LEVEL_VERBOSE, log, "Releasing shared data", tag)
         Svc.PluginInterface:RelinquishData(tag)
         shared_data_cache[tag] = nil
     end
@@ -1561,9 +1566,16 @@ function equip_classjob(classjob_abrev, update_after)
             log_(LEVEL_INFO, log, "Equipping gearset", gearset_name, "for class/job", classjob_abrev)
             repeat
                 CheckTimeout(10, ti, CallerName(false), "Couldnt equip gearset:", gearset_name)
-                gs:Equip()
-                wait_ready(10, 1)
+                wait(0.3)
+                yesno = Addons.GetAddon("SelectYesno")
+                wait(0.3)
+                if yesno.Ready then
+                    close_yes_no(true,
+                        "registered to this gear set could not be found in your Armoury Chest. Replace it with")
+                end
+                wait(0.4)
             until Player.Gearset.Name == gearset_name
+            wait_ready(10, 1)
             log_(LEVEL_VERBOSE, log, "Gearset", gearset_name, "equipped")
             if update_after then
                 Player.Gearset:Update()
@@ -2097,24 +2109,37 @@ end
 GAMBA_TIME = Config.Get("GambaLimit")
 PROCESS_RETAINERS = Config.Get("HandleRetainers")
 local MAX_RESEARCH = Config.Get("MaxResearch")
+local JOBS_LIST = Config.Get("RelicJobs")
 
 if Config.Get("DebugMessages") then
     debug_level = LEVEL_DEBUG
 end
 
-local current_job = Player.Job
 
-log_(LEVEL_INFO, log, "Starting auto relic on job", current_job.Name, "(" .. current_job.Abbreviation .. ")")
 log_(LEVEL_INFO, log, "Gamba limit:", GAMBA_TIME, "Max research:", MAX_RESEARCH, "Handle retainers:", PROCESS_RETAINERS)
 
-if current_job.Abbreviation == "FSH" then
-    fish_relic(MAX_RESEARCH)
-elseif current_job.IsGatherer then
-    gather_relic(MAX_RESEARCH)
-elseif current_job.IsCrafter then
-    log_(LEVEL_ERROR, log, "Crafters arent supported yet")                                  --craft_relic(MAX_RESEARCH)
+function run_current_job()
+    local current_job = Player.Job
+    log_(LEVEL_INFO, log, "Starting auto relic on job", current_job.Name, "(" .. current_job.Abbreviation .. ")")
+
+    if current_job.Abbreviation == "FSH" then
+        fish_relic(MAX_RESEARCH)
+    elseif current_job.IsGatherer then
+        gather_relic(MAX_RESEARCH)
+    elseif current_job.IsCrafter then
+        log_(LEVEL_ERROR, log, "Crafters arent supported yet")                                  --craft_relic(MAX_RESEARCH)
+    else
+        log_(LEVEL_ERROR, log, "Invalid job", current_job.Name, "only gatherers are supported") -- update message when crafters are supported
+    end
+end
+
+if JOBS_LIST.Count == 0 then
+    run_current_job()
 else
-    log_(LEVEL_ERROR, log, "Invalid job", current_job.Name, "only gatherers are supported") -- update message when crafters are supported
+    for job in luanet.each(JOBS_LIST) do
+        equip_classjob(job, true)
+        run_current_job()
+    end
 end
 
 log_(LEVEL_INFO, log, "Finished auto relic on job", current_job.Name, "(" .. current_job.Abbreviation .. ")")
