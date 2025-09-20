@@ -974,7 +974,7 @@ shared_data_cache = {}
 
 function require_ipc(ipc_signature, result_type, arg_types)
     if ipc_cache_actions[ipc_signature] ~= nil or ipc_cache_functions[ipc_signature] ~= nil then
-        log_(LEVEL_DEBUG, log, "IPC already loaded", ipc_signature)
+        log_(LEVEL_VERBOSE, log, "IPC already loaded", ipc_signature)
         return
     end
     arg_types = default(arg_types, {})
@@ -2094,8 +2094,8 @@ function gather_relic(max)
         end
     until finished and ready
 end
-local GAMBA_TIME = Config.Get("GambaLimit")
-local PROCESS_RETAINERS = Config.Get("HandleRetainers")
+GAMBA_TIME = Config.Get("GambaLimit")
+PROCESS_RETAINERS = Config.Get("HandleRetainers")
 local MAX_RESEARCH = Config.Get("MaxResearch")
 
 if Config.Get("DebugMessages") then
