@@ -41,6 +41,12 @@ configs:
 --]=====]
 --[[
 ================================================================================
+  BEGIN IMPORT: moon_man.lua
+================================================================================
+]]
+
+--[[
+================================================================================
   BEGIN IMPORT: utils.lua
 ================================================================================
 ]]
@@ -1449,6 +1455,16 @@ ALL_ARMORY = {
     InventoryType.ArmoryOffHand,
 }
 
+ALL_RETAINER = {
+    InventoryType.RetainerPage1,
+    InventoryType.RetainerPage2,
+    InventoryType.RetainerPage3,
+    InventoryType.RetainerPage4,
+    InventoryType.RetainerPage5,
+    InventoryType.RetainerPage6,
+    InventoryType.RetainerPage7,
+}
+
 
 
 
@@ -1599,10 +1615,9 @@ function move_to_inventory(item)
 end
 
 function move_items(source_inv, dest_inv, lowest_item_id, highest_item_id)
-    if lowest_item_id == nil then
-        StopScript("BadArguments", CallerName(false), "Item id [or range] is required to move items")
-    end
     highest_item_id = default(highest_item_id, lowest_item_id)
+    lowest_item_id = default(lowest_item_id, 0)
+    highest_item_id = default(highest_item_id, 999999999)
     if type(source_inv) ~= "table" then
         source_inv = { source_inv }
     end
@@ -2107,6 +2122,13 @@ function gather_relic(max)
         end
     until finished and ready
 end
+--[[
+================================================================================
+  END IMPORT: moon_man.lua
+================================================================================
+]]
+
+
 GAMBA_TIME = Config.Get("GambaLimit")
 PROCESS_RETAINERS = Config.Get("HandleRetainers")
 local MAX_RESEARCH = Config.Get("MaxResearch")
