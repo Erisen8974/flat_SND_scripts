@@ -1434,9 +1434,14 @@ function ZoneTransition()
     log_debug("Lifestream done")
     repeat
         CheckTimeout(30, ti, "ZoneTransition", "Waiting for zone transition to end")
+        while IPC.vnavmesh.BuildProgress() > 0 do
+            CheckTimeout(10 * 60, ti, "ZoneTransition", "Waiting for navmesh to finish building")
+            wait(10)
+        end
         wait(0.1)
     until IsPlayerAvailable()
     log_debug("Teleport done")
+
     wait_ready(30, 2)
     log_debug("Ready!")
 end
@@ -2200,6 +2205,9 @@ function get_relic_exp(max)
         local current = tonumber(addon:GetAtkValue(80 + i).ValueString)
         local base_target = tonumber(addon:GetAtkValue(90 + i).ValueString)
         local max_target = tonumber(addon:GetAtkValue(100 + i).ValueString)
+        if base_target == nil then
+            break
+        end
         if base_target ~= 0 then
             completed = false
         end
@@ -2298,6 +2306,35 @@ function gather_relic(max)
             end
         end
     until finished and ready
+end
+
+function run_mission(relic_max, gamba_time, process_retainers)
+    relic_max = default(relic_max, false)
+    GAMBA_TIME = default(gamba_time, GAMBA_TIME)
+    PROCESS_RETAINERS = default(process_retainers, PROCESS_RETAINERS)
+
+    local finished, ready, exp = false, false, nil
+    do_upkeep()
+    exp, finished = get_relic_exp(relic_max)
+    ready = true
+    for t, need in pairs(exp) do
+        if need > 0 then
+            ready = false
+            log_(LEVEL_INFO, log, "Need", need, "type", t, "research")
+
+            ice_setting("OnlyGrabMission", false)
+            ice_setting("StopAfterCurrent", true)
+            ice_setting("XPRelicGrind", true)
+            ice_setting("StopOnceHitCosmoCredits", false)
+            ice_setting("StopOnceHitLunarCredits", false)
+
+            start_ice_once()
+            break
+        end
+    end
+    if ready and not finished then
+        report_research_safe()
+    end
 end
 --[[
 ================================================================================
