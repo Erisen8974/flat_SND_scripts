@@ -255,7 +255,7 @@ function close_yes_no(accept, expected_text)
     if IsAddonReady("SelectYesno") then
         if expected_text ~= nil then
             local node = GetNodeText("SelectYesno", 1, 2)
-            if node == nil or not node:find(expected_text) then
+            if node == nil or not node:upper():find(expected_text:upper()) then
                 log_debug("Expected yesno text '" .. expected_text .. "' didnt match actual text:", node)
                 return
             end
@@ -883,6 +883,13 @@ function deref_pointer(ptr, ctype)
     return ref
 end
 
+function cs_instance(type, assembly)
+    local T, T_ty = load_type(type, assembly)
+
+    local instance = T.Instance()
+    return deref_pointer(instance, T_ty)
+end
+
 function assembly_name(inputstr)
     for str in string.gmatch(inputstr, "[^%.]+") do
         return str
@@ -1051,19 +1058,35 @@ function get_generic_method(targetType, method_name, genericTypes)
     for i = 0, methods.Length - 1 do
         local m = methods[i]
         if m.Name == method_name and m.IsGenericMethodDefinition and m:GetGenericArguments().Length == genericArgsArr.Length then
-            local constructed = nil
-            local success, err = pcall(function()
-                constructed = m:MakeGenericMethod(genericArgsArr)
-            end)
-            if success then
-                return constructed
-            else
-                StopScript("Error constructing generic method", CallerName(false), err)
-            end
+            return m:MakeGenericMethod(genericArgsArr)
         end
     end
     StopScript("No generic method found", CallerName(false), "No matching generic method found for", method_name, "with",
         #genericTypes, "generic args")
+end
+
+function get_method_overload(targetType, method_name, paramTypes)
+    local methods = targetType:GetMethods()
+    for i = 0, methods.Length - 1 do
+        local m = methods[i]
+        if m.Name == method_name then
+            local params = m:GetParameters()
+            if params.Length == #paramTypes then
+                local match = true
+                for j = 0, params.Length - 1 do
+                    if params[j].ParameterType ~= paramTypes[j + 1] then
+                        match = false
+                        break
+                    end
+                end
+                if match then
+                    return m
+                end
+            end
+        end
+    end
+    StopScript("No method overload found", CallerName(false), "No matching overload found for", method_name, "with",
+        #paramTypes, "parameters")
 end
 --[[
 ================================================================================
@@ -1847,6 +1870,37 @@ function move_items(source_inv, dest_inv, lowest_item_id, highest_item_id)
         source_idx = source_idx + 1
     end
     return true -- all items if any were able to be moved
+end
+
+function open_map(map_name, partial_ok)
+    partial_ok = default(partial_ok, false)
+    local ready = false
+    repeat
+        local addon = Addons.GetAddon("SelectIconString")
+        if addon.Ready then
+            title = addon:GetAtkValue(0)
+            if title ~= nil then
+                title = title.ValueString
+            end
+            if title == "Decipher" then
+                ready = true
+            else
+                log_(LEVEL_ERROR, log, "SelectIconString found with unexpected title:", title)
+                close_addon("SelectIconString")
+            end
+        end
+        if not ready then
+            Actions.ExecuteGeneralAction(19)
+            wait(0.5)
+        end
+    until ready
+    if not SelectInList(map_name, "SelectIconString", partial_ok) then
+        log_(LEVEL_ERROR, log, "Map", map_name, "not found in map list")
+        return false
+    end
+    wait_any_addons("SelectYesno")
+    close_yes_no(true, map_name)
+    wait_ready(10, 1)
 end
 --[[
 ================================================================================
