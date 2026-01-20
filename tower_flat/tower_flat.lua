@@ -4,47 +4,18 @@
 author: Erisen
 version: 1.0.0
 description: >-
-  Moon Manager
-
-
-  Control ICE through the fancy new IPCs!
+  Jump up kugane tower
 plugin_dependencies:
-- ICE
 - vnavmesh
-- AutoHook
-plugins_to_disable:
-- TextAdvance
-- YesAlready
-
 configs:
-  MaxResearch:
+  LampJump:
     default: false
-    description: Get research to cap instead of just target
-  HandleRetainers:
-    default: true
-    description: Interact with summoning bell when AR is ready.
-  GambaLimit:
-    default: 8000
-    description: Lunar Credits to start start spinning the wheel. Must configure ICE to do gamba! 0 to disable.
-    min: 0
-    max: 10000
+    description: Jump to the lamp
+    type: bool
 
-  RelicJobs:
-    description: Jobs abbreviations to cycle through completing the relic. Dont add any to only run on current job.
-    is_choice: false
-    choices: ["FSH", "BTN", "MIN"]
-
-  DebugMessages:
-    default: false
-    description: Show debug logs
 [[End Metadata]]
 --]=====]
 
---[[
-================================================================================
-  BEGIN IMPORT: moon_man.lua
-================================================================================
-]]
 
 --[[
 ================================================================================
@@ -821,6 +792,13 @@ end
 
 --[[
 ================================================================================
+  BEGIN IMPORT: path_helpers.lua
+================================================================================
+]]
+
+-- Skipped import: utils.lua
+--[[
+================================================================================
   BEGIN IMPORT: luasharp.lua
 ================================================================================
 ]]
@@ -1195,15 +1173,6 @@ end
 ================================================================================
 ]]
 
---[[
-================================================================================
-  BEGIN IMPORT: path_helpers.lua
-================================================================================
-]]
-
--- Skipped import: utils.lua
--- Skipped import: luasharp.lua
--- Skipped import: hard_ipc.lua
 import "System.Numerics"
 import "System"
 
@@ -1759,807 +1728,123 @@ end
 ================================================================================
 ]]
 
---[[
-================================================================================
-  BEGIN IMPORT: inventory_buddy.lua
-================================================================================
-]]
 
--- Skipped import: utils.lua
 
-
-ALL_INVENTORIES = {
-    InventoryType.Inventory1,
-    InventoryType.Inventory2,
-    InventoryType.Inventory3,
-    InventoryType.Inventory4,
-}
-
-ALL_ARMORY = {
-    InventoryType.ArmoryHead,
-    InventoryType.ArmoryBody,
-    InventoryType.ArmoryHands,
-    InventoryType.ArmoryLegs,
-    InventoryType.ArmoryFeets,
-    InventoryType.ArmoryEar,
-    InventoryType.ArmoryNeck,
-    InventoryType.ArmoryWrist,
-    InventoryType.ArmoryRings,
-    InventoryType.ArmoryMainHand,
-    InventoryType.ArmoryOffHand,
-}
-
-ALL_RETAINER = {
-    InventoryType.RetainerPage1,
-    InventoryType.RetainerPage2,
-    InventoryType.RetainerPage3,
-    InventoryType.RetainerPage4,
-    InventoryType.RetainerPage5,
-    InventoryType.RetainerPage6,
-    InventoryType.RetainerPage7,
-}
-
-
-
-
-item_info_list = {
-    -- ARR Maps
-    TimewornLeatherMap = { itemId = 6688, itemName = "Timeworn Leather Map" },
-    TimewornGoatskinMap = { itemId = 6689, itemName = "Timeworn Goatskin Map" },
-    TimewornToadskinMap = { itemId = 6690, itemName = "Timeworn Toadskin Map" },
-    TimewornBoarskinMap = { itemId = 6691, itemName = "Timeworn Boarskin Map" },
-    TimewornPeisteskinMap = { itemId = 6692, itemName = "Timeworn Peisteskin Map" },
-
-    -- Heavensward Maps
-    TimewornArchaeoskinMap = { itemId = 12241, itemName = "Timeworn Archaeoskin Map" },
-    TimewornWyvernskinMap = { itemId = 12242, itemName = "Timeworn Wyvernskin Map" },
-    TimewornDragonskinMap = { itemId = 12243, itemName = "Timeworn Dragonskin Map" },
-
-    -- Stormblood Maps
-    TimewornGaganaskinMap = { itemId = 17835, itemName = "Timeworn Gaganaskin Map" },
-    TimewornGazelleskinMap = { itemId = 17836, itemName = "Timeworn Gazelleskin Map" },
-
-    -- Shadowbringers Maps
-    TimewornGliderskinMap = { itemId = 26744, itemName = "Timeworn Gliderskin Map" },
-    TimewornZonureskinMap = { itemId = 26745, itemName = "Timeworn Zonureskin Map" },
-
-    -- Endwalker Maps
-    TimewornSaigaskinMap = { itemId = 36611, itemName = "Timeworn Saigaskin Map" },
-    TimewornKumbhiraskinMap = { itemId = 36612, itemName = "Timeworn Kumbhiraskin Map" },
-    TimewornOphiotauroskinMap = { itemId = 39591, itemName = "Timeworn Ophiotauroskin Map" },
-
-    -- Dawntrail Maps
-    TimewornLoboskinMap = { itemId = 43556, itemName = "Timeworn Loboskin Map" },
-    TimewornBraaxskinMap = { itemId = 43557, itemName = "Timeworn Br'aaxskin Map" },
-
-
-    -- Raid Utils
-    Moqueca = { itemId = 44178, recipeId = 35926, itemName = "Moqueca" },
-    Grade2GemdraughtofDexterity = { itemId = 44163, recipeId = 35919, itemName = "Grade 2 Gemdraught of Dexterity" },
-    Grade2GemdraughtofIntelligence = { itemId = 44165, recipeId = 35921, itemName = "Grade 2 Gemdraught of Intelligence" },
-
-    SquadronSpiritbondingManual = { itemId = 14951, buffId = 1083, itemName = "Squadron Spiritbonding Manual" },
-    SuperiorSpiritbondPotion = { itemId = 27960, buffId = 49, itemName = "Superior Spiritbond Potion" }, --This is just medicated
-
-
-
-    -- precrafts:
-    SanctifiedWater = { itemId = 44051, recipeId = 5661, itemName = "Sanctified Water" },
-    CoconutMilk = { itemId = 36082, recipeId = 5287, itemName = "Coconut Milk" },
-    TuraliCornOil = { itemId = 43976, recipeId = 5590, itemName = "Turali Corn Oil" },
-
-
-
-    -- Hunt bills
-    EliteMarkBill = { itemId = 2001362, itemName = "Elite Mark Bill" },
-    EliteClanMarkBill = { itemId = 2001703, itemName = "Elite Clan Mark Bill" },
-    EliteVeteranClanMarkBill = { itemId = 2002116, itemName = "Elite Veteran Clan Mark Bill" },
-    EliteClanNutsyMarkBill = { itemId = 2002631, itemName = "Elite Clan Nutsy Mark Bill" },
-    EliteGuildshipMarkBill = { itemId = 2003093, itemName = "Elite Guildship Mark Bill" },
-    EliteDawnHuntBill = { itemId = 2003512, itemName = "Elite Dawn Hunt Bill" },
-}
-
-
-
-function normalize_item_name(name)
-    return name:gsub("%W", "")
-end
-
-function get_item_name_from_id(id)
-    return luminia_row_checked("item", id).Name
-end
-
-function get_item_info(item_name)
-    local item_info = item_info_list[normalize_item_name(item_name)]
-    if item_info == nil then
-        StopScript("No information for item", item_name)
-    end
-    return item_info
-end
-
-function get_item_info_by_id(item_id)
-    for _, item_info in pairs(item_info_list) do
-        if item_info.itemId == item_id then
-            return item_info
-        end
-    end
-end
-
-function equip_gearset(gearset_name, update_after)
-    update_after = default(update_after, false)
-    local ti = ResetTimeout()
-    for gs in luanet.each(Player.Gearsets) do
-        if gs.Name == gearset_name then
-            repeat
-                CheckTimeout(10, ti, CallerName(false), "Couldnt equip gearset:", gearset_name)
-                gs:Equip()
-                wait_ready(10, 1)
-            until Player.Gearset.Name == gearset_name
-            log_(LEVEL_INFO, log, "Gearset", gearset_name, "equipped")
-            if update_after then
-                Player.Gearset:Update()
-            end
-            return true
-        end
-    end
-    log_(LEVEL_ERROR, log, "Gearset", gearset_name, "not found")
-    return false
-end
-
-function equip_classjob(classjob_abrev, update_after)
-    update_after = default(update_after, false)
-    classjob_abrev = classjob_abrev:upper()
-    local ti = ResetTimeout()
-    for gs in luanet.each(Player.Gearsets) do
-        if luminia_row_checked("ClassJob", gs.ClassJob).Abbreviation == classjob_abrev then
-            gearset_name = gs.Name
-            log_(LEVEL_INFO, log, "Equipping gearset", gearset_name, "for class/job", classjob_abrev)
-            repeat
-                CheckTimeout(10, ti, CallerName(false), "Couldnt equip gearset:", gearset_name)
-                gs:Equip()
-                wait(0.3)
-                yesno = Addons.GetAddon("SelectYesno")
-                wait(0.3)
-                if yesno.Ready then
-                    close_yes_no(true,
-                        "registered to this gear set could not be found in your Armoury Chest. Replace it with")
-                end
-                wait(0.4)
-            until Player.Gearset.Name == gearset_name
-            wait_ready(10, 1)
-            log_(LEVEL_VERBOSE, log, "Gearset", gearset_name, "equipped")
-            if update_after then
-                Player.Gearset:Update()
-            end
-            return true
-        end
-    end
-    log_(LEVEL_ERROR, log, "No gearset found for class/job", classjob_abrev)
-    return false
-end
-
-function move_to_inventory(item)
-    for _, destination in pairs(ALL_INVENTORIES) do
-        if Inventory.GetInventoryContainer(destination).FreeSlots > 0 then
-            item:MoveItemSlot(destination)
-            return true
-        end
-    end
-    return false
-end
-
-function move_items(source_inv, dest_inv, lowest_item_id, highest_item_id)
-    highest_item_id = default(highest_item_id, lowest_item_id)
-    lowest_item_id = default(lowest_item_id, 0)
-    highest_item_id = default(highest_item_id, 999999999)
-    if type(source_inv) ~= "table" then
-        source_inv = { source_inv }
-    end
-    if type(dest_inv) ~= "table" then
-        dest_inv = { dest_inv }
-    end
-    local source_idx = 1
-    local dest_idx = 1
-    local destinv = nil
-    while source_idx <= #source_inv do
-        local sourceinv = Inventory.GetInventoryContainer(source_inv[source_idx])
-        if sourceinv == nil then
-            StopScript("No inventory", CallerName(false), source_inv[source_idx])
-        else
-            destinv = Inventory.GetInventoryContainer(dest_inv[dest_idx])
-            if destinv == nil then
-                StopScript("No inventory", CallerName(false), dest_inv[dest_idx])
-            end
-            for item in luanet.each(sourceinv.Items) do
-                if lowest_item_id <= item.ItemId and item.ItemId <= highest_item_id then
-                    local need_move = true
-                    while dest_idx <= #dest_inv and need_move do
-                        if destinv.FreeSlots > 0 then
-                            log("Moving", item.ItemId, "from", source_inv[source_idx], "to", dest_inv[dest_idx])
-                            item:MoveItemSlot(dest_inv[dest_idx])
-                            need_move = false
-                            wait(0)
-                        else
-                            log_(LEVEL_INFO, log, "No space to move item to", dest_inv[dest_idx])
-                            dest_idx = dest_idx + 1
-                            if dest_idx <= #dest_inv then
-                                destinv = Inventory.GetInventoryContainer(dest_inv[dest_idx])
-                                if destinv == nil then
-                                    StopScript("No inventory", CallerName(false), dest_inv[dest_idx])
-                                end
-                            end
-                        end
-                    end
-                    if need_move then
-                        return false -- found an item to move with no space available
-                    end
-                end
-            end
-        end
-        source_idx = source_idx + 1
-    end
-    return true -- all items if any were able to be moved
-end
-
-function open_map(map_name, partial_ok)
-    partial_ok = default(partial_ok, false)
-    local ready = false
-    repeat
-        local addon = Addons.GetAddon("SelectIconString")
-        if addon.Ready then
-            title = addon:GetAtkValue(0)
-            if title ~= nil then
-                title = title.ValueString
-            end
-            if title == "Decipher" then
-                ready = true
-            else
-                log_(LEVEL_ERROR, log, "SelectIconString found with unexpected title:", title)
-                close_addon("SelectIconString")
-            end
-        end
-        if not ready then
-            Actions.ExecuteGeneralAction(19)
-            wait(0.5)
-        end
-    until ready
-    if not SelectInList(map_name, "SelectIconString", partial_ok) then
-        log_(LEVEL_ERROR, log, "Map", map_name, "not found in map list")
-        return false
-    end
-    wait_any_addons("SelectYesno")
-    close_yes_no(true, map_name)
-    wait_ready(10, 1)
-end
---[[
-================================================================================
-  END IMPORT: inventory_buddy.lua
-================================================================================
-]]
-
-
-
--- Cool NPCs
--- Researchingway - tools
--- Orbitingway - gamba
--- Summoning Bell - summoning bell...
--- Mesouaidonque - da goods!
-
-local WALK_THRESHOLD = 100
-local RETURN_TO_SPOT = true
-local RETURN_RADIUS = 3
-local start_spot = Player.Entity.Position
-local GAMBA_TIME = 8000
-local PROCESS_RETAINERS = true
-
-
-function ice_only_mission(s)
-    local ICE_SETMISSION = 'ICE.OnlyMissions'
-    require_ipc(ICE_SETMISSION, nil, { 'System.Collections.Generic.HashSet`1[System.UInt32]' })
-    invoke_ipc(ICE_SETMISSION, s)
-end
-
-function ice_enable()
-    local ICE_ENABLE = 'ICE.Enable'
-    require_ipc(ICE_ENABLE)
-    invoke_ipc(ICE_ENABLE)
-end
-
-function ice_disable()
-    local ICE_DISABLE = 'ICE.Disable'
-    require_ipc(ICE_DISABLE)
-    invoke_ipc(ICE_DISABLE)
-end
-
-function ice_current_state()
-    local ICE_CURRENTSTATE = 'ICE.CurrentState'
-    require_ipc(ICE_CURRENTSTATE, 'System.String')
-    return invoke_ipc(ICE_CURRENTSTATE)
-end
-
-function ice_is_running()
-    local ICE_ISRUNNING = 'ICE.IsRunning'
-    require_ipc(ICE_ISRUNNING, 'System.Boolean')
-    return invoke_ipc(ICE_ISRUNNING)
-end
-
-function ice_change_bool(name, value)
-    local ICE_CHANGEBOOL = 'ICE.ChangeSetting'
-    require_ipc(ICE_CHANGEBOOL, nil, { 'System.String', 'System.Boolean' })
-    invoke_ipc(ICE_CHANGEBOOL, name, value)
-end
-
-function ice_change_number(name, value)
-    local ICE_CHANGENUM = 'ICE.ChangeSettingAmount'
-    require_ipc(ICE_CHANGENUM, nil, { 'System.String', 'System.UInt32' })
-    invoke_ipc(ICE_CHANGENUM, name, value)
-end
-
---[[
-    Expected settings:
-        OnlyGrabMission: bool
-        StopAfterCurrent: bool
-        XPRelicGrind: bool
-
-        StopOnceHitCosmoCredits: bool
-        CosmoCreditsCap: number
-
-        StopOnceHitLunarCredits: bool
-        LunarCreditsCap: number
---]]
-function ice_setting(name, value)
-    if type(name) ~= "string" then
-        StopScript("Bad setting name type", CallerName(false), "Settings names are strings, not", type(name), name)
-    end
-    if type(value) == "boolean" then
-        log_debug("Setting boolean", name, "to", value)
-        ice_change_bool(name, value)
-    elseif type(value) == "number" then
-        log_debug("Setting string", name, "to", value)
-        ice_change_number(name, value)
-    else
-        StopScript("Bad setting type", CallerName(false), "Unexpected settings type", type(value), value)
-    end
-end
-
-function start_ice_once()
-    if ice_is_running() then
-        return false
-    end
-    ice_enable()
-    ice_setting('StopAfterCurrent', true)
-    return true
-end
-
-function set_missions(...)
-    s = make_set('System.UInt32', ...)
-    log_(LEVEL_DEBUG, log_iterable, s)
-    ice_only_mission(s)
-end
-
-function on_moon()
-    return list_contains({ 1237, 1291 }, Svc.ClientState.TerritoryType)
-end
-
-function return_to_craft()
-    log_(LEVEL_VERBOSE, log, "Craft return? Is crafter:", Player.Job.IsCrafter, "Setting enabled:", RETURN_TO_SPOT)
-    if RETURN_TO_SPOT and Player.Job.IsCrafter then
-        move_near_point(start_spot, RETURN_RADIUS)
-    end
-end
-
-function path_to_moon_thing(thing, distance)
-    distance = default(distance, 3)
-    if not on_moon() then
-        log_(LEVEL_INFO, "Must be on moon to path to moon thing")
-        return false
-    end
-    local e = get_closest_entity(thing)
-    local path = nil
-    local path_len = WALK_THRESHOLD
-    if e.Position ~= nil then
-        path = pathfind_with_tolerance(e.Position, false, distance)
-        path_len = path_length(path)
-    end
-    if path_len >= WALK_THRESHOLD then
-        log_(LEVEL_INFO, log, "Too far away or not found, returning to base")
-        Actions.ExecuteAction(42149)
-        ZoneTransition()
-        e = get_closest_entity(thing, true)
-        path = pathfind_with_tolerance(e.Position, false, distance)
-    end
-    walk_path(path, false, distance)
-end
-
-function moon_talk(who)
-    path_to_moon_thing(who)
-    local e = get_closest_entity(who, true)
-    e:SetAsTarget()
-    e:Interact()
-    close_talk("SelectString", "SelectIconString", "RetainerList")
-end
-
-function report_research(class)
-    moon_talk("Researchingway")
-    SelectInList("Report research data.", "SelectString")
-    SelectInList(class.Name, "SelectIconString", true)
-    local yesno
-    repeat
-        yesno = Addons.GetAddon("SelectYesno")
-        wait(0)
-    until yesno.Exists and yesno.Ready
-    if yesno:GetAtkValue(8).ValueString == "Report research data." then
-        SafeCallback("SelectYesno", true, 0)
-    end
-    close_talk()
-end
-
-function start_gamba()
-    moon_talk("Orbitingway")
-    SelectInList('Draw a cosmic fortune', "SelectString", true)
-    SelectInList('Yes.', "SelectString")
-    repeat
-        wait(1)
-    until ice_current_state() == "Gambling"
-    repeat
-        wait(1)
-    until ice_current_state() == "Idle"
-    close_talk()
-end
-
---stage1_range = 45591-45689
---stage2_range = 49009-49063
-
-function item_is_lunar(item_id)
-    return
-        (45591 <= item_id and item_id <= 45689) or
-        (49009 <= item_id and item_id <= 49063)
-end
-
-function move_lunar_weapons()
-    move_items(ALL_INVENTORIES, InventoryType.ArmoryMainHand, 45591, 45689)
-    move_items(ALL_INVENTORIES, InventoryType.ArmoryMainHand, 49009, 49063)
-end
-
---[[
-    Broken cause gearset.items isnt valid...
-    local wep_id = nil
-    log_(LEVEL_VERBOSE, log, "Items for gearset:", gs.Name, gs.BannerIndex, gs.IsValid)
-    for item in luanet.each(gs.Items) do
-        log_(LEVEL_VERBOSE, log, "--", item.ItemId, item.Container)
-        if item.Container == InventoryType.ArmoryMainHand then
-            wep_id = item.ItemId
-        end
-    end
-    if wep_id == nil then
-        log_(LEVEL_ERROR, log, "Main hand weapon not in gearset. Assuming not stellar.")
-        return false
-    end
-    log_(LEVEL_DEBUG, log, "Mainhand item id is", wep_id)
---]]
-
-function turnin_mission()
-    open_addon("WKSMissionInfomation", "WKSHud", true, 11)
-    confirm_addon("WKSMissionInfomation", true, 11)
-end
-
-function is_moon_tool_equiped()
-    for item in luanet.each(Inventory.GetInventoryContainer(InventoryType.EquippedItems).Items) do
-        if item_is_lunar(item.ItemId) then
-            return true
-        end
-    end
-    return false
-end
-
-function equip_some_other_job(initial_gs)
-    for gs in luanet.each(Player.Gearsets) do
-        if gs.ClassJob ~= initial_gs.ClassJob then
-            repeat
-                gs:Equip()
-                wait_ready(10, 1)
-            until Player.Gearset.ClassJob ~= initial_gs.ClassJob
-            return true
-        end
-    end
-    return false
-end
-
-function reapply_gearset(gs)
-    local yesno = nil
-    repeat
-        gs:Equip()
-        wait(0.3)
-        yesno = Addons.GetAddon("SelectYesno")
-        wait(0.3)
-        if yesno.Ready then
-            close_yes_no(true,
-                "registered to this gear set could not be found in your Armoury Chest. Replace it with")
-        end
-        wait(0.4)
-    until Player.Gearset.BannerIndex == gs.BannerIndex
-    wait_ready(10, 1)
-end
-
-function report_research_safe()
-    local initial_gs = Player.Gearset
-    local initial_job = Player.Job
-
-    local need_swap = is_moon_tool_equiped()
-    if need_swap then
-        if not equip_some_other_job(initial_gs) then
-            StopScript("No Other Job", CallerName(false),
-                "Need to change gearset to hand in tool but no gearsets for other jobs were found")
-        end
-    end
-    report_research(initial_job)
-    wait_ready(10, 1)
-    if need_swap then
-        move_lunar_weapons()
-        wait(1)
-        reapply_gearset(initial_gs)
-        --Player.Gearset:Update()
-    end
-end
-
-known_fissions = {
-    [988] = { Setup = Vector3(404.64, 29.07, -78.85), Fish = Vector3(394.01, 27.56, -74.69), ReturnDist = 500 },
-    [986] = { Setup = Vector3(207.61, 133.72, -753.43), Fish = Vector3(213.55, 133.50, -746.50), ReturnDist = 550 },
-}
-
-
-function moon_path_to_fish(fish)
-    if Vector3.Distance(Player.Entity.Position, fish.Fish) < 2 then
-        return -- already here
-    end
-    local path = await(IPC.vnavmesh.Pathfind(Player.Entity.Position, fish.Setup, false))
-    if path_length(path) > fish.ReturnDist then
-        log_(LEVEL_INFO, log, "Too far away, returning to base")
-        Actions.ExecuteAction(42149)
-        ZoneTransition()
-        path = await(IPC.vnavmesh.Pathfind(Player.Entity.Position, fish.Setup, false))
-    end
-    walk_path(path, false)
-    Actions.ExecuteGeneralAction(23)
-    custom_path(false, { fish.Fish })
-end
-
-function start_fisher_mission(number)
-    if ice_current_state() ~= "Idle" then
-        StopScript("Invalid State", CallerName(false), "ICE should be idle to initialize proplerly")
-    end
-    set_missions(number)
-
-    local locs = known_fissions[number]
-    if locs ~= nil then
-        moon_path_to_fish(locs)
-    end
-
-    ice_setting("OnlyGrabMission", true)
-    ice_setting("StopAfterCurrent", true)
-    ice_setting("XPRelicGrind", false)
-    ice_setting("StopOnceHitCosmoCredits", false)
-    ice_setting("StopOnceHitLunarCredits", false)
-
-    log_(LEVEL_INFO, log, "ICE Configured, starting mission")
-
-    ice_enable()
-
-    while ice_current_state() ~= "ManualMode" do
-        wait(1)
-    end
-
-    ice_disable()
-
-    log_(LEVEL_INFO, log, "ICE started mission, running AH")
-
-    repeat
-        IPC.AutoHook.DeleteAllAnonymousPresets()
-        IPC.AutoHook.SetPluginState(true)
-        IPC.AutoHook.CreateAndSelectAnonymousPreset(
-            "AH4_H4sIAAAAAAAACq2U227bMAyGX2XgtQ3Yjk/xXRo0RYG0K5ruqtgFI9OxEFfKJLlrV+TdB/nQxDkswNC7hBS//ydF+QMmtZFT1EZPixVkH3AtcFnRpKogM6omBx6JoTYTwV/QcCmmKBh9Jqdl/XIuhdrMuaAdNO9TtzlkQTp24EFxqbh5h8x34FZfv7Gqzinfhe35bcu6k5KVFtb8CM5h49SBm81TqUiXssoh8z1vIPRvpXPIPYB30aqdyhl/oe+FFwz2EFlVxIzldIX+/rHgsgupco5VD4j9cAAIu2Mzrsvrd9J7QtGBwygaOIz7G8E1LUpemCvkjU8b0H1gYZCtNWTR5xSPufvUcUd9QMNJMNrzEx/WxcOJBX2p4n9oiqbdk171sDo4mPeoq34qseK41jN8lcoCBoG+nZEzjD8Sk6+kIPPtkE6vz8UrH1qcLOUrQVZgpfu7vOKrG3xpZjIRq4qU7v3YPcghGyVeeNToQCPd2vV+Mwq7l24v6UkufuPmVpia2xd8g1z0o3N9B+a1ojvSGlcEGYAD940JuJeCwGkJ7xuCzM7wBG8utflv3oMiTacdggtn8q1ik9/5WWyIGYXVtFaKhPmiLg+oX9brSbdHHZ9Ub061C7IwcmOfNherhaFN84Xdee+WaKK+xvI+rvHwQ/BfNVkueGkU+cxnbk7F0g1Z4LkpGy3dPGSYsDgpkmUKWwfmXJvvhdXQkD3/7APdZ38XsE21/1sHncc7KcW3GWozVE/GoyLBNHKTlI3dMMxTF0cUu0WY5vk4xsCjArZ/AT3TAGUHBwAA"
-        )
-        --IDK which is better cast or ahstart. ahstart
-        Engines.Native.Run('/ahstart')
-        --Actions.ExecuteAction(289)
-        wait(0.1)
-    until GetCharacterCondition(43)
-
-    wait_ready(nil, 2)
-
-    turnin_mission()
-end
-
-function get_relic_exp(max)
-    if Addons.GetAddon("WKSToolCustomize").Ready then
-        close_addon("WKSToolCustomize")
-        wait(5)
-    end
-    max = default(max, false)
-    open_addon("WKSToolCustomize", "WKSHud", true, 15)
-    local addon = Addons.GetAddon("WKSToolCustomize")
-    if not addon.Exists or not addon.Ready then
-        StopScript("No WKS Tool", CallerName(false), "Failed to get the research screen")
-    end
-    local completed = true
-    local EXP_COUNT = 5
-    local exp_needed = {}
-    for i = 1, EXP_COUNT do
-        local current = tonumber(addon:GetAtkValue(80 + i).ValueString)
-        local base_target = tonumber(addon:GetAtkValue(90 + i).ValueString)
-        local max_target = tonumber(addon:GetAtkValue(100 + i).ValueString)
-        if base_target == nil then
-            break
-        end
-        if base_target ~= 0 then
-            completed = false
-        end
-        if max then
-            exp_needed[i] = max_target - current
-        else
-            exp_needed[i] = base_target - current
-        end
-    end
-    close_addon("WKSToolCustomize")
-    return exp_needed, completed
-end
-
-function get_lunar_credits()
-    local addon = Addons.GetAddon("WKSHud")
-    if not addon.Exists or not addon.Ready then
-        StopScript("No WKS Hud", CallerName(false), "Failed to get the HUD")
-    end
-
-    return tonumber(addon:GetAtkValue(6).ValueString)
-end
-
-function do_upkeep()
-    log_(LEVEL_DEBUG, log, "Doing upkeep")
-    log_(LEVEL_DEBUG, log, "GAMBA_TIME:", GAMBA_TIME, "PROCESS_RETAINERS:", PROCESS_RETAINERS)
-    if GAMBA_TIME > 0 and get_lunar_credits() >= GAMBA_TIME then
-        log_(LEVEL_DEBUG, log, "Starting gamba")
-        start_gamba()
-    end
-    if PROCESS_RETAINERS and IPC.AutoRetainer.AreAnyRetainersAvailableForCurrentChara() then
-        log_(LEVEL_DEBUG, log, "Processing retainers")
-        moon_talk("Summoning Bell")
-        repeat
-            wait(1)
-        until not IPC.AutoRetainer.IsBusy()
-        close_addon("RetainerList")
-        close_talk()
-    end
-end
-
-function fish_relic(max)
-    log_(LEVEL_DEBUG, log, "Fish relic, Gamba limit:", GAMBA_TIME, "Max research:", max, "Handle retainers:",
-        PROCESS_RETAINERS)
-    repeat
-        do_upkeep()
-        local exp, finished = get_relic_exp(max)
-        local ready = true
-        for t, need in pairs(exp) do
-            if need > 0 then
-                ready = false
-                log_(LEVEL_INFO, log, "Need", need, "type", t, "research")
-                if t == 1 or t == 2 then
-                    start_fisher_mission(986)
-                elseif t == 3 or t == 4 or t == 5 then
-                    start_fisher_mission(988)
-                else
-                    StopScript("Bad State", CallerName(false), "Unexpected research type", t)
-                end
-                break
-            end
-        end
-        if ready and not finished then
-            report_research_safe()
-        end
-    until finished and ready
-end
-
-function gather_relic(max)
-    log_(LEVEL_DEBUG, log, "Gather relic, Gamba limit:", GAMBA_TIME, "Max research:", max, "Handle retainers:",
-        PROCESS_RETAINERS)
-    repeat
-        local finished, ready, exp = false, false, nil
-        if ice_is_running() then
-            wait(1)
-        else
-            do_upkeep()
-            exp, finished = get_relic_exp(max)
-            ready = true
-            for t, need in pairs(exp) do
-                if need > 0 then
-                    ready = false
-                    log_(LEVEL_INFO, log, "Need", need, "type", t, "research")
-
-                    ice_setting("OnlyGrabMission", false)
-                    ice_setting("StopAfterCurrent", true)
-                    ice_setting("XPRelicGrind", true)
-                    ice_setting("StopOnceHitCosmoCredits", false)
-                    ice_setting("StopOnceHitLunarCredits", false)
-
-                    start_ice_once()
-                    break
-                end
-            end
-            if ready and not finished then
-                report_research_safe()
-            end
-        end
-    until finished and ready
-end
-
-function run_mission(relic_max, gamba_time, process_retainers)
-    relic_max = default(relic_max, false)
-    GAMBA_TIME = default(gamba_time, GAMBA_TIME)
-    PROCESS_RETAINERS = default(process_retainers, PROCESS_RETAINERS)
-
-    local finished, ready, exp = false, false, nil
-    do_upkeep()
-    exp, finished = get_relic_exp(relic_max)
-    ready = true
-    for t, need in pairs(exp) do
-        if need > 0 then
-            ready = false
-            log_(LEVEL_INFO, log, "Need", need, "type", t, "research")
-
-            ice_setting("OnlyGrabMission", false)
-            ice_setting("StopAfterCurrent", true)
-            ice_setting("XPRelicGrind", true)
-            ice_setting("StopOnceHitCosmoCredits", false)
-            ice_setting("StopOnceHitLunarCredits", false)
-
-            start_ice_once()
-            break
-        end
-    end
-    if ready and not finished then
-        report_research_safe()
-    end
-end
---[[
-================================================================================
-  END IMPORT: moon_man.lua
-================================================================================
-]]
-
-
-GAMBA_TIME = Config.Get("GambaLimit")
-PROCESS_RETAINERS = Config.Get("HandleRetainers")
-local MAX_RESEARCH = Config.Get("MaxResearch")
-local JOBS_LIST = Config.Get("RelicJobs")
-
-if Config.Get("DebugMessages") then
-    debug_level = LEVEL_DEBUG
-end
-
-
-log_(LEVEL_INFO, log, "Gamba limit:", GAMBA_TIME, "Max research:", MAX_RESEARCH, "Handle retainers:", PROCESS_RETAINERS)
-
-function run_current_job()
-    local current_job = Player.Job
-    log_(LEVEL_INFO, log, "Starting auto relic on job", current_job.Name, "(" .. current_job.Abbreviation .. ")")
-
-    if current_job.Abbreviation == "FSH" then
-        fish_relic(MAX_RESEARCH)
-    elseif current_job.IsGatherer then
-        gather_relic(MAX_RESEARCH)
-    elseif current_job.IsCrafter then
-        log_(LEVEL_ERROR, log, "Crafters arent supported yet")                                  --craft_relic(MAX_RESEARCH)
-    else
-        log_(LEVEL_ERROR, log, "Invalid job", current_job.Name, "only gatherers are supported") -- update message when crafters are supported
-    end
-
-    log_(LEVEL_INFO, log, "Finished auto relic on job", current_job.Name, "(" .. current_job.Abbreviation .. ")")
-end
-
-if JOBS_LIST.Count == 0 then
-    run_current_job()
+if Player.Entity.Position.Y < 20 then
+    WalkTo(-41.7, 14, -37.3)
+    jump_to_point({ -40.9, 15.5, -35.2 })
+    move_to_point({ -41.1, 15.4, -35.3 })
+    jump_to_point({ -39.7, 17.2, -37.5 }, .2)
+    jump_to_point({ -36.2, 17.4, -39.2 })
+    move_to_point({ -36.6, 17.4, -39.3 })
+    jump_to_point({ -34.5, 19.2, -39.0 })
+    move_to_point({ -33.8, 19.2, -38.4 })
+    jump_to_point({ -30.1, 20.9, -38.5 }, .3)
+    jump_to_point({ -33.1, 24.0, -41.7 })
 else
-    for job in luanet.each(JOBS_LIST) do
-        equip_classjob(job)
-        run_current_job()
-    end
+    log("Higher than start")
+end
+
+
+if Player.Entity.Position.Y < 30 then
+    --first landing
+    WalkTo(-41, 25.6, -78)
+    jump_to_point({ -43.1, 26.6, -78.2 })
+    jump_to_point({ -48.8, 26.6, -80.9 })
+    jump_to_point({ -51.8, 27.7, -81.7 })
+    move_to_point({ -48.6, 27.7, -81.7 })
+    jump_to_point({ -52.3, 28.3, -81.7 })
+    jump_to_point({ -53.7, 30.0, -81.0 })
+    move_to_point({ -54.0, 30.0, -82.7 })
+    jump_to_point({ -54.2, 32.7, -78.8 })
+else
+    log("Higher than first landing")
+end
+
+
+if Player.Entity.Position.Y < 48 then
+    --second landing
+    WalkTo(-46.1, 40.4, -70.7)
+    jump_to_point({ -46.6, 42.1, -70.2 })
+    jump_to_point({ -49.5, 43.8, -70.5 })
+    jump_to_point({ -52.6, 45.3, -70.4 })
+    jump_to_point({ -49.2, 47.1, -70.4 })
+    move_to_point({ -49.0, 47.1, -70.9 })
+    jump_to_point({ -46.5, 48.9, -70.9 })
+    jump_to_point({ -46.6, 51.6, -69.5 }, nil, true)
+else
+    log("Higher than second landing")
+end
+
+
+if Player.Entity.Position.Y < 57 then
+    --third landing
+    WalkTo(-52.6, 52.0, -67.5)
+    jump_to_point({ -54.3, 53.6, -66.6 })
+    jump_to_point({ -57.0, 54.8, -63.2 })
+    jump_to_point({ -56.0, 56.1, -58.9 })
+    jump_to_point({ -54.7, 57.7, -58.8 })
+else
+    log("Higher than third landing")
+end
+
+
+if Player.Entity.Position.Y < 89 then
+    --posts
+    jump_to_point({ -54.9, 59.5, -55.5 })
+    jump_to_point({ -54.5, 61.3, -58.0 })
+    jump_to_point({ -54.5, 62.8, -56.8 })
+    jump_to_point({ -54.9, 64.3, -59.5 })
+    jump_to_point({ -55.5, 65.9, -62.0 })
+    move_to_point({ -52.1, 67.1, -65.6 })
+    --more posts
+    jump_to_point({ -49.0, 68.4, -65.5 })
+    jump_to_point({ -47.0, 70.2, -65.5 })
+    jump_to_point({ -45.5, 72.0, -65.8 })
+    jump_to_point({ -48.4, 73.5, -65.8 }, .2)
+    jump_to_point({ -50.3, 75.1, -66.0 })
+    jump_to_point({ -47.2, 76.4, -65.9 }, .2)
+    jump_to_point({ -44.6, 77.3, -65.6 })
+    jump_to_point({ -41.2, 79.0, -65.5 })
+    move_to_point({ -41.4, 79.0, -65.9 })
+    --corner
+    jump_to_point({ -39.6, 80.9, -63.3 })
+    jump_to_point({ -41.5, 82.2, -61.5 })
+    jump_to_point({ -41.5, 82.2, -57.0 }, .4)
+
+    jump_to_point({ -41.1, 83.7, -55.4 })
+    move_to_point({ -40.0, 83.7, -55.1 })
+
+    jump_to_point({ -38.9, 85.5, -51.9 }, .2)
+    jump_to_point({ -39.8, 87.3, -54.3 })
+    jump_to_point({ -40.4, 88.4, -54.4 })
+    jump_to_point({ -39.9, 89.7, -52.1 })
+    jump_to_point({ -42.2, 89.2, -52.8 }, nil, true)
+else
+    log("Higher than 4th landing")
+end
+
+
+if Player.Entity.Position.Y < 95 then
+    --landing 4
+    move_to_point({ -42.0, 89.2, -65.0 })
+    jump_to_point({ -42.4, 90.9, -65.8 })
+    move_to_point({ -43.4, 90.9, -66.5 })
+    jump_to_point({ -40.0, 91.0, -68.7 })
+    move_to_point({ -39.8, 91.0, -68.9 })
+    jump_to_point({ -38.2, 92.8, -66.9 })
+    move_to_point({ -36.6, 92.8, -67.1 })
+    jump_to_point({ -37.5, 94.6, -65.5 })
+    jump_to_point({ -39.5, 96.6, -65.8 }, nil, true)
+else
+    log("Higher than top")
+end
+
+
+if Config.Get("LampJump") then
+    --the lamp
+    move_to_point({ -40.3, 96.4, -64.3 })
+    Actions.ExecuteGeneralAction(4)
+    wait(1)
+    jump_to_point({ -04.4, 05.0, -64.0 }, 1)
 end
