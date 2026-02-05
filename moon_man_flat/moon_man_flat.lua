@@ -337,13 +337,20 @@ function char_cannonical_name(char)
     end
     char = char:upper()
     potential_char = {}
-    for known_char, _ in pairs(private_char_info) do
+    for known_char, known_char_info in pairs(private_char_info) do
         known_char = known_char:upper()
         if known_char == char then
             return title_case(known_char)
         end
         if known_char:match("^" .. char .. " ") then
             return title_case(known_char)
+        end
+        if known_char_info.ReferenceNames ~= nil then
+            for _, ref_name in pairs(known_char_info.ReferenceNames) do
+                if ref_name:upper() == char then
+                    return title_case(known_char)
+                end
+            end
         end
         if known_char:match(char) then
             table.insert(potential_char, known_char)
@@ -1948,10 +1955,37 @@ function move_to_inventory(item)
     return false
 end
 
-function move_items(source_inv, dest_inv, lowest_item_id, highest_item_id)
+function item_id_range(lowest_item_id, highest_item_id, in_range)
     highest_item_id = default(highest_item_id, lowest_item_id)
     lowest_item_id = default(lowest_item_id, 0)
     highest_item_id = default(highest_item_id, 999999999)
+    in_range = default(in_range, true)
+    return function(target_item)
+        if lowest_item_id <= target_item.ItemId and target_item.ItemId <= highest_item_id then
+            return in_range
+        end
+        return not in_range
+    end
+end
+
+function item_in_gearset(in_gearset)
+    in_gearset = default(in_gearset, true)
+    return function(item)
+        for gs in luanet.each(Player.Gearsets) do
+            for gsi in luanet.each(gs.Items) do
+                if gsi.ItemId == item.ItemId
+                    and gsi.Slot == item.Slot
+                    and gsi.Container == item.Container
+                then
+                    return in_gearset
+                end
+            end
+        end
+        return not in_gearset
+    end
+end
+
+function move_items(source_inv, dest_inv, pred)
     if type(source_inv) ~= "table" then
         source_inv = { source_inv }
     end
@@ -1971,7 +2005,7 @@ function move_items(source_inv, dest_inv, lowest_item_id, highest_item_id)
                 StopScript("No inventory", CallerName(false), dest_inv[dest_idx])
             end
             for item in luanet.each(sourceinv.Items) do
-                if lowest_item_id <= item.ItemId and item.ItemId <= highest_item_id then
+                if pred(item) then
                     local need_move = true
                     while dest_idx <= #dest_inv and need_move do
                         if destinv.FreeSlots > 0 then
@@ -2030,6 +2064,30 @@ function open_map(map_name, partial_ok)
     wait_any_addons("SelectYesno")
     close_yes_no(true, map_name)
     wait_ready(10, 1)
+end
+
+function collect_reward_mail()
+    if not Addons.GetAddon("LetterList").Ready then
+        StopScript("LetterList addon not ready")
+    end
+    local count = tonumber(Addons.GetAddon("LetterList"):GetNode(1, 22, 23).Text:match("(.-)/"))
+    repeat
+        open_addon("LetterViewer", "LetterList", true, 0, 0)
+        SafeCallback("LetterViewer", true, 1)
+        repeat wait(0) until Addons.GetAddon("LetterViewer"):GetNode(1, 32, 2, 3).IsVisible
+        repeat wait(0) until not Addons.GetAddon("LetterViewer"):GetNode(1, 32, 2, 3).IsVisible
+        wait(.1)
+        SafeCallback("LetterViewer", true, 2)
+        wait_any_addons("SelectYesno")
+        SafeCallback("SelectYesno", true, 0)
+        local l = count
+        repeat
+            wait(0)
+            count = tonumber(Addons.GetAddon("LetterList"):GetNode(1, 22, 23).Text:match("(.-)/"))
+        until l ~= count
+        wait(.1)
+    until count == 0
+    close_addon("LetterList")
 end
 --[[
 ================================================================================
