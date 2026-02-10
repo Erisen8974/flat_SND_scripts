@@ -74,6 +74,7 @@ function IsPlayerAvailable()
 end
 
 function PathMoveTo(x, y, z, fly)
+    running_vnavmesh = true
     IPC.vnavmesh.PathfindAndMoveTo(Vector3(x, y, z), fly)
 end
 
@@ -372,6 +373,7 @@ function change_character(char, world, max_time)
         return
     end
 
+    running_lifestream = true
     IPC.Lifestream.ExecuteCommand(target)
 
     repeat
@@ -628,10 +630,18 @@ end
 function StopScript(message, caller, ...)
     caller = default(caller, CallerName())
     log("Fatal error " .. message .. " in " .. caller .. ": ", ...)
-    yield("/qst stop")
-    IPC.Lifestream.Abort()
-    IPC.visland.StopRoute()
-    IPC.vnavmesh.Stop()
+    if default(running_questy, false) then
+        yield("/qst stop")
+    end
+    if default(running_lifestream, false) then
+        IPC.Lifestream.Abort()
+    end
+    if default(running_visland, false) then
+        IPC.visland.StopRoute()
+    end
+    if default(running_vnavmesh, false) or default(running_visland, false) or default(running_lifestream, false) or default(running_questy, false) then
+        IPC.vnavmesh.Stop()
+    end
     luanet.error(logify(message, ...))
 end
 
@@ -853,6 +863,22 @@ function make_set(content_type, ...)
     return l
 end
 
+function make_instance_args(ctype, args_table)
+    local Activator_ty = luanet.ctype(Activator)
+    local CreateInstance = get_method_overload(Activator_ty, "CreateInstance",
+        { Type.GetType("System.Type"), Type.GetType("System.Object[]") })
+
+    local args = luanet.make_array(Object, args_table)
+    local arg_array = luanet.make_array(Object, { ctype, args })
+    local instance = CreateInstance:Invoke(nil, arg_array)
+    if arg_array == instance then
+        log_array(args)
+        log_array(arg_array)
+        StopScript("Failed to make instance", CallerName(false), "type:", ctype, "args:", args)
+    end
+    return instance
+end
+
 function deref_pointer(ptr, ctype)
     if Unsafe == nil then
         _, Unsafe = load_type("System.Runtime.CompilerServices.Unsafe", "System.Runtime")
@@ -890,6 +916,35 @@ function load_type(type_path, assembly)
     local type_var = luanet.import_type(type_path)
     log_(LEVEL_VERBOSE, log, "Wrapped type", type_var)
     return type_var, luanet.ctype(type_var)
+end
+
+function load_type_(type_path, assembly)
+    assembly = default(assembly, assembly_name(type_path))
+    local assembly_handle = nil
+    for i in luanet.each(AppDomain.CurrentDomain:GetAssemblies()) do
+        if i.FullName:match(assembly .. ",") then
+            if assembly_handle ~= nil then
+                StopScript("Multiple assemblies found matching name", CallerName(false), "assembly:", assembly)
+            end
+            assembly_handle = i
+        end
+    end
+    if assembly_handle == nil then
+        StopScript("Assembly not found", CallerName(false), "assembly:", assembly)
+    end
+    local type_found = nil
+    for i in luanet.each(assembly_handle.ExportedTypes) do
+        if i.FullName == type_path then
+            if type_found ~= nil then
+                StopScript("Multiple types found matching name", CallerName(false), "type_path:", type_path)
+            end
+            type_found = i
+        end
+    end
+    if type_found == nil then
+        StopScript("Type not found", CallerName(false), "type_path:", type_path)
+    end
+    return type_found
 end
 
 function get_method(type, method_name, binding)
@@ -1212,6 +1267,7 @@ function TownPath(town, x, y, z, shard, dest_town, ...)
         else
             log_debug("Walking to shard", nearest_shard.DataId, shard_name, "to warp to", shard)
             WalkTo(nearest_shard.Position, nil, nil, 7)
+            running_lifestream = true
             yield("/li " .. tostring(shard))
             ZoneTransition()
         end
@@ -1306,6 +1362,7 @@ function net_near_point(spot, radius, fly)
 end
 
 function move_near_point(spot, radius, fly)
+    running_vnavmesh = true
     fly = default(fly, false)
     local distance = random_real(0, radius)
     local angle = random_real(0, math.pi * 2)
@@ -1338,6 +1395,7 @@ function move_near_point(spot, radius, fly)
 end
 
 function jump_to_point(p, runup, retry)
+    running_vnavmesh = true
     p = xyz_to_vec3(table.unpack(p))
     runup = default(runup, .1)
     retry = default(retry, false)
@@ -1397,6 +1455,7 @@ function jump_to_point(p, runup, retry)
 end
 
 function move_to_point(p)
+    running_vnavmesh = true
     p = xyz_to_vec3(table.unpack(p))
     custom_path(false, { p })
     local last_pos = Player.Entity.Position
@@ -1417,6 +1476,7 @@ function move_to_point(p)
 end
 
 function walk_path(path, fly, range, stop_if_stuck, ref_point)
+    running_vnavmesh = true
     stop_if_stuck = default(stop_if_stuck, false)
     ref_point = default(ref_point, path[path.Count - 1])
     local ti = ResetTimeout()
@@ -1443,6 +1503,7 @@ function walk_path(path, fly, range, stop_if_stuck, ref_point)
 end
 
 function land_and_dismount()
+    running_vnavmesh = true
     if not GetCharacterCondition(4) then
         return
     end
@@ -1462,6 +1523,7 @@ function land_and_dismount()
 end
 
 function custom_path(fly, waypoints)
+    running_vnavmesh = true
     local vec_waypoints = {}
     log_debug("Setting up")
     log_debug_table(vec_waypoints)
@@ -1496,6 +1558,7 @@ function xyz_to_vec3(x, y, z)
 end
 
 function WalkTo(x, y, z, range)
+    running_vnavmesh = true
     local pos = xyz_to_vec3(x, y, z)
     local ti = ResetTimeout()
     local p
@@ -1518,6 +1581,7 @@ function WalkTo(x, y, z, range)
 end
 
 function pathfind_with_tolerance(vec3, fly, tolerance)
+    running_vnavmesh = true
     require_ipc('vnavmesh.Nav.PathfindWithTolerance',
         'System.Threading.Tasks.Task`1[System.Collections.Generic.List`1[System.Numerics.Vector3]]',
         {
@@ -1569,6 +1633,7 @@ function IsNearThing(thing, distance)
 end
 
 function RunVislandRoute(route_b64, wait_message)
+    running_visland = true
     local ti = ResetTimeout()
     wait_message = default(wait_message, "Running route")
     log(wait_message)
@@ -1586,6 +1651,7 @@ function RunVislandRoute(route_b64, wait_message)
 end
 
 function StartRouteToTarget()
+    running_vnavmesh = true
     if not HasTarget() then
         log("No target to route to")
         return false
