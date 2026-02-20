@@ -135,6 +135,8 @@ import 'System.Numerics'
 pcall(require, 'private/char_info')
 
 
+SCRIPT_TAG = "[EriSND]"
+
 -----------------------
 -- General Utilities --
 -----------------------
@@ -151,7 +153,7 @@ end
 function pause_pyes()
     pyes_pause_count = default(pyes_pause_count, 0)
     pyes_pause_count = pyes_pause_count + 1
-    get_shared_data("YesAlready.StopRequests", "System.Collections.Generic.HashSet`1[System.String]"):Add("EriSND")
+    get_shared_data("YesAlready.StopRequests", "System.Collections.Generic.HashSet`1[System.String]"):Add(SCRIPT_TAG)
 end
 
 function resume_pyes()
@@ -161,7 +163,7 @@ function resume_pyes()
     pyes_pause_count = pyes_pause_count - 1
     if pyes_pause_count == 0 then
         get_shared_data("YesAlready.StopRequests", "System.Collections.Generic.HashSet`1[System.String]"):Remove(
-            "EriSND")
+            SCRIPT_TAG)
         release_shared_data("YesAlready.StopRequests")
     end
 end
@@ -244,7 +246,7 @@ function close_yes_no(accept, expected_text)
         if expected_text ~= nil then
             local node = GetNodeText("SelectYesno", 1, 2)
             if node == nil or not node:upper():find(expected_text:upper()) then
-                log_debug("Expected yesno text '" .. expected_text .. "' didnt match actual text:", node)
+                log_(LEVEL_DEBUG, _text, "Expected yesno text '" .. expected_text .. "' didnt match actual text:", node)
                 return
             end
         end
@@ -346,10 +348,10 @@ function char_cannonical_name(char)
     if #potential_char == 1 then
         return title_case(potential_char[1])
     elseif #potential_char > 1 then
-        log_debug("Ambiguous character name", char, "candidates:", table.concat(potential_char, ", "))
+        log_(LEVEL_DEBUG, _text, "Ambiguous character name", char, "candidates:", table.concat(potential_char, ", "))
         return title_case(char)
     else
-        log_debug("Unknown character name", char)
+        log_(LEVEL_DEBUG, _text, "Unknown character name", char)
         return title_case(char)
     end
 end
@@ -381,10 +383,10 @@ function change_character(char, world, max_time)
 
     local target = string.format("%s@%s", char, world)
 
-    log_debug("Changing to character", target)
+    log_(LEVEL_DEBUG, _text, "Changing to character", target)
 
     if Player.Entity.Name == char and luminia_row_checked("World", Player.Entity.HomeWorld).Name == world then
-        log_debug("Already on target character", target)
+        log_(LEVEL_DEBUG, _text, "Already on target character", target)
         return
     end
 
@@ -400,16 +402,16 @@ function change_character(char, world, max_time)
         CheckTimeout(max_time, ti, "ZoneTransition", "Waiting for lifestream to finish")
         wait(10)
     until not IPC.Lifestream.IsBusy()
-    log_debug("Lifestream done")
+    log_(LEVEL_DEBUG, _text, "Lifestream done")
 
     repeat
         CheckTimeout(max_time, ti, "ZoneTransition", "Waiting for zone transition to end")
         wait(5)
     until IsPlayerAvailable()
 
-    log_debug("relog done")
+    log_(LEVEL_DEBUG, _text, "relog done")
     wait_ready(max_time, 2)
-    log_debug("Ready!")
+    log_(LEVEL_DEBUG, _text, "Ready!")
 end
 
 function is_busy()
@@ -499,7 +501,8 @@ function GetListElement(menu, index)
         StopScript("Unknown addon", CallerName(false), menu)
     end
     if tostring(n.NodeType):find("Text:") == nil then
-        log_debug("Not a text node", CallerName(false), "NodeType:", n.NodeType, "NodeId:", n.Id, name, menu, index)
+        log_(LEVEL_DEBUG, _text, "Not a text node", CallerName(false), "NodeType:", n.NodeType, "NodeId:", n.Id, name,
+            menu, index)
         return nil
     end
     return n.Text
@@ -532,7 +535,7 @@ function SelectInList(name, menu, partial_ok)
         for i = 0, 21 do
             local entry = GetListElement(menu, i)
             if entry == nil then break end
-            log_debug("List item", entry)
+            log_(LEVEL_DEBUG, _text, "List item", entry)
             local match = entry:upper() == string:upper()
             if not match and partial_ok then
                 match = entry:upper():find(string:upper())
@@ -657,7 +660,7 @@ function StopScript(message, caller, ...)
     if default(running_vnavmesh, false) or default(running_visland, false) or default(running_lifestream, false) or default(running_questy, false) then
         IPC.vnavmesh.Stop()
     end
-    luanet.error(logify(message, ...))
+    luanet.error(_text(message, ...))
 end
 
 function CallerName(string)
@@ -700,29 +703,21 @@ LEVEL_CRITICAL = 1
 
 debug_level = default(debug_level, LEVEL_ERROR)
 
-function log_(level, logger, ...)
+function log_(level, formatter, ...)
+    local msg = SCRIPT_TAG .. formatter(...)
+    if LEVEL_INFO >= level then
+        Dalamud.Log(msg)
+    elseif LEVEL_DEBUG >= level then
+        Dalamud.LogDebug(msg)
+    elseif LEVEL_VERBOSE >= level then
+        Dalamud.LogVerbose(msg)
+    end
     if debug_level >= level then
-        logger(...)
+        Svc.Chat:Print(...)
     end
 end
 
-function log_debug(...)
-    log_(LEVEL_DEBUG, log, ...)
-end
-
-function log_debug_array(...)
-    log_(LEVEL_DEBUG, log_array, ...)
-end
-
-function log_debug_table(...)
-    log_(LEVEL_DEBUG, log_table, ...)
-end
-
-function log_debug_list(...)
-    log_(LEVEL_DEBUG, log_list, ...)
-end
-
-function logify(first, ...)
+function _text(first, ...)
     local rest = table.pack(...)
     local message = tostring(first)
     for i = 1, rest.n do
@@ -732,47 +727,49 @@ function logify(first, ...)
 end
 
 function log(...)
-    local msg = logify(...)
-    Svc.Chat:Print(msg)
-    Dalamud.Log(msg)
+    log_(LEVEL_CRITICAL, _text, ...)
 end
 
-function log_count(list, c)
+function _count(list, c, type)
+    local msg = default(type, 'collection') .. ':'
     for i = 0, c - 1 do
-        log(tostring(i) .. ': ' .. tostring(list[i]))
+        msg = msg .. '\n' .. tostring(i) .. ': ' .. tostring(list[i])
     end
+    return msg
 end
 
-function log_iterable(it)
-    log('---', it, '---')
+function _iterable(it)
+    local msg = '---' .. tostring(it) .. '---'
     for i in luanet.each(it) do
-        log(i)
+        msg = msg .. '\n' .. tostring(i)
     end
-    log('--- end ---')
+    return msg .. '\n--- end ---'
 end
 
-function log_list(list)
+function _list(list)
     local c = list.Count
     if c == nil then
-        log("Not a list (No Count property)", list)
+        return "Not a list (No Count property): " .. tostring(list)
     else
-        log_count(list, c)
+        return _count(list, c, 'list')
     end
 end
 
-function log_array(array)
+function _array(array)
     local c = array.Length
     if c == nil then
-        log("Not a array (No Length property)", array)
+        return "Not an array (No Length property): " .. tostring(array)
     else
-        log_count(array, c)
+        return _count(array, c, 'array')
     end
 end
 
-function log_table(list)
+function _table(list)
+    local msg = 'table:'
     for i, v in pairs(list) do
-        log(tostring(i) .. ': ' .. tostring(v))
+        msg = msg .. '\n' .. tostring(i) .. ': ' .. tostring(v)
     end
+    return msg
 end
 
 -----------------------
@@ -780,27 +777,21 @@ end
 -----------------------
 
 
-global_wait_info = {
-    current_timed_function = nil,
-    current_timed_start = 0
-}
-
 function ResetTimeout()
-    global_wait_info = {
-        current_timed_function = CallerName(),
-        current_timed_start = os.clock()
-    }
-    return global_wait_info
+    return os.clock()
 end
 
-function CheckTimeout(max_duration, wait_info, caller_name, ...)
-    wait_info = default(wait_info, global_wait_info)
-    if wait_info == global_wait_info and CallerName() ~= wait_info.current_timed_function then
-        wait_info = ResetTimeout()
+function CheckTimeout(max_duration, wait_info, context, ...)
+    if wait_info == nil then
+        StopScript("wait_info is nil", CallerName(false), "Must be initialized with ResetTimeout()", "context:",
+            default(context, CallerName(false)), ...)
     end
-    max_duration = default(max_duration, 30)
-    if os.clock() > wait_info.current_timed_start + max_duration then
-        StopScript("Max duration reached", default(caller_name, CallerName(false)), ...)
+    if max_duration == nil then
+        StopScript("max_duration is nil", CallerName(false), "Must be provided", "context:",
+            default(context, CallerName(false)), ...)
+    end
+    if os.clock() > wait_info + max_duration then
+        StopScript("Max duration reached", default(context, CallerName(false)), ...)
     end
 end
 
@@ -852,29 +843,29 @@ end
 
 function make_list(content_type, ...)
     local t = Type.GetType(("System.Collections.Generic.List`1[%s]"):format(content_type))
-    log_(LEVEL_VERBOSE, log, "Making list of type", t)
+    log_(LEVEL_VERBOSE, _text, "Making list of type", t)
     local l = Activator.CreateInstance(t)
-    log_(LEVEL_VERBOSE, log, "List made", l)
+    log_(LEVEL_VERBOSE, _text, "List made", l)
     local args = table.pack(...)
     for i = 1, args.n do
         l:Add(args[i])
     end
-    log_(LEVEL_VERBOSE, log, "Initial items added")
-    log_(LEVEL_VERBOSE, log_iterable, l)
+    log_(LEVEL_VERBOSE, _text, "Initial items added")
+    log_(LEVEL_VERBOSE, _iterable, l)
     return l
 end
 
 function make_set(content_type, ...)
     local t = Type.GetType(("System.Collections.Generic.HashSet`1[%s]"):format(content_type))
-    log_(LEVEL_VERBOSE, log, "Making set of type", t)
+    log_(LEVEL_VERBOSE, _text, "Making set of type", t)
     local l = Activator.CreateInstance(t)
-    log_(LEVEL_VERBOSE, log, "Set made", l)
+    log_(LEVEL_VERBOSE, _text, "Set made", l)
     local args = table.pack(...)
     for i = 1, args.n do
         l:Add(args[i])
     end
-    log_(LEVEL_VERBOSE, log, "Initial items added")
-    log_(LEVEL_VERBOSE, log_iterable, l)
+    log_(LEVEL_VERBOSE, _text, "Initial items added")
+    log_(LEVEL_VERBOSE, _iterable, l)
     return l
 end
 
@@ -887,8 +878,8 @@ function make_instance_args(ctype, args_table)
     local arg_array = luanet.make_array(Object, { ctype, args })
     local instance = CreateInstance:Invoke(nil, arg_array)
     if arg_array == instance then
-        log_array(args)
-        log_array(arg_array)
+        log_(LEVEL_CRITICAL, _array, args)
+        log_(LEVEL_CRITICAL, _array, arg_array)
         StopScript("Failed to make instance", CallerName(false), "type:", ctype, "args:", args)
     end
     return instance
@@ -925,11 +916,11 @@ end
 
 function load_type(type_path, assembly)
     assembly = default(assembly, assembly_name(type_path))
-    log_(LEVEL_VERBOSE, log, "Loading assembly", assembly)
+    log_(LEVEL_VERBOSE, _text, "Loading assembly", assembly)
     luanet.load_assembly(assembly)
-    log_(LEVEL_VERBOSE, log, "Wrapping type", type_path)
+    log_(LEVEL_VERBOSE, _text, "Wrapping type", type_path)
     local type_var = luanet.import_type(type_path)
-    log_(LEVEL_VERBOSE, log, "Wrapped type", type_var)
+    log_(LEVEL_VERBOSE, _text, "Wrapped type", type_var)
     return type_var, luanet.ctype(type_var)
 end
 
@@ -1167,7 +1158,7 @@ shared_data_cache = {}
 
 function require_ipc(ipc_signature, result_type, arg_types)
     if ipc_cache_actions[ipc_signature] ~= nil or ipc_cache_functions[ipc_signature] ~= nil then
-        log_(LEVEL_VERBOSE, log, "IPC already loaded", ipc_signature)
+        log_(LEVEL_VERBOSE, _text, "IPC already loaded", ipc_signature)
         return
     end
     arg_types = default(arg_types, {})
@@ -1188,10 +1179,10 @@ function require_ipc(ipc_signature, result_type, arg_types)
         StopScript("IPC not found", CallerName(false), "signature:", ipc_signature)
     end
     if result_type == nil then
-        log_(LEVEL_DEBUG, log, "loaded action IPC", ipc_signature)
+        log_(LEVEL_DEBUG, _text, "loaded action IPC", ipc_signature)
         ipc_cache_actions[ipc_signature] = subscriber
     else
-        log_(LEVEL_DEBUG, log, "loaded function IPC", ipc_signature)
+        log_(LEVEL_DEBUG, _text, "loaded function IPC", ipc_signature)
         ipc_cache_functions[ipc_signature] = subscriber
     end
 end
@@ -1234,12 +1225,12 @@ end
 function release_shared_data(tag)
     if tag == nil then
         for t, _ in pairs(shared_data_cache) do
-            log_(LEVEL_VERBOSE, log, "Releasing shared data", t)
+            log_(LEVEL_VERBOSE, _text, "Releasing shared data", t)
             Svc.PluginInterface:RelinquishData(t)
         end
         shared_data_cache = {}
     else
-        log_(LEVEL_VERBOSE, log, "Releasing shared data", tag)
+        log_(LEVEL_VERBOSE, _text, "Releasing shared data", tag)
         Svc.PluginInterface:RelinquishData(tag)
         shared_data_cache[tag] = nil
     end
@@ -1262,9 +1253,9 @@ function TownPath(town, x, y, z, shard, dest_town, ...)
     wait_ready(10, 1)
     local current_town = luminia_row_checked("TerritoryType", Svc.ClientState.TerritoryType).PlaceName.Name
     if list_contains(alt_zones, current_town) then
-        log_debug("Already in", current_town)
+        log_(LEVEL_DEBUG, _text, "Already in", current_town)
     else
-        log_debug("Moving to", town, "from", current_town)
+        log_(LEVEL_DEBUG, _text, "Moving to", town, "from", current_town)
         repeat
             yield("/tp " .. tostring(town))
             wait(1)
@@ -1276,11 +1267,11 @@ function TownPath(town, x, y, z, shard, dest_town, ...)
         local nearest_shard = closest_aethershard()
         local shard_name = luminia_row_checked("Aetheryte", nearest_shard.DataId).AethernetName.Name
         if current_town == dest_town and path_distance_to(Vector3(x, y, z)) < path_distance_to(nearest_shard.Position) then
-            log_debug("Already nearer to", x, y, z, "than to aethernet", shard_name)
+            log_(LEVEL_DEBUG, _text, "Already nearer to", x, y, z, "than to aethernet", shard_name)
         elseif shard_name == shard then
-            log_debug("Nearest shard is already", shard_name)
+            log_(LEVEL_DEBUG, _text, "Nearest shard is already", shard_name)
         else
-            log_debug("Walking to shard", nearest_shard.DataId, shard_name, "to warp to", shard)
+            log_(LEVEL_DEBUG, _text, "Walking to shard", nearest_shard.DataId, shard_name, "to warp to", shard)
             WalkTo(nearest_shard.Position, nil, nil, 7)
             running_lifestream = true
             yield("/li " .. tostring(shard))
@@ -1385,17 +1376,17 @@ function move_near_point(spot, radius, fly)
     local result, fly_result
     target.Y = target.Y + 0.5
     if fly then
-        log_(LEVEL_DEBUG, log, "Looking for mesh point in range", radius, "of", target)
+        log_(LEVEL_DEBUG, _text, "Looking for mesh point in range", radius, "of", target)
         fly_result = IPC.vnavmesh.NearestPoint(target, radius, radius)
     end
-    log_(LEVEL_DEBUG, log, "Looking for floor point in range", radius, "of", target)
+    log_(LEVEL_DEBUG, _text, "Looking for floor point in range", radius, "of", target)
     result = IPC.vnavmesh.PointOnFloor(target, false, radius)
 
     if result == nil or (fly and fly_result == nil) then
-        log_(LEVEL_ERROR, log, "No valid point found in range", radius, "of", spot, "searched from", target)
+        log_(LEVEL_ERROR, _text, "No valid point found in range", radius, "of", spot, "searched from", target)
         return false
     end
-    log_(LEVEL_DEBUG, log, "Found point in area", result, fly_result)
+    log_(LEVEL_DEBUG, _text, "Found point in area", result, fly_result)
     local path, fly_path
     if fly_result == nil or Vector3.Distance(Player.Entity.Position, result) < FLY_THRESHOLD then
         path = pathfind_with_tolerance(result, false, radius)
@@ -1508,7 +1499,7 @@ function walk_path(path, fly, range, stop_if_stuck, ref_point)
         end
         if not fly or GetCharacterCondition(4) then
             if stop_if_stuck and Vector3.Distance(last_pos, cur_pos) < stop_if_stuck then
-                log_(LEVEL_ERROR, log, "Antistuck triggered!")
+                log_(LEVEL_ERROR, _text, "Antistuck triggered!")
                 IPC.vnavmesh.Stop()
             end
             last_pos = cur_pos
@@ -1540,9 +1531,9 @@ end
 function custom_path(fly, waypoints)
     running_vnavmesh = true
     local vec_waypoints = {}
-    log_debug("Setting up")
-    log_debug_table(vec_waypoints)
-    log_debug_table(waypoints)
+    log_(LEVEL_DEBUG, _text, "Setting up")
+    log_(LEVEL_DEBUG, _table, vec_waypoints)
+    log_(LEVEL_DEBUG, _table, "Waypoints:", waypoints)
     for i, waypoint in pairs(waypoints) do
         if type(waypoint) == "table" then
             local x, y, z = table.unpack(waypoint)
@@ -1553,21 +1544,23 @@ function custom_path(fly, waypoints)
             StopScript("Invalid waypoint type", CallerName(false), "Type:", type(waypoint))
         end
     end
-    log_debug("Calling moveto")
-    log_debug_table(vec_waypoints)
+    log_(LEVEL_DEBUG, _text, "Calling moveto")
+    log_(LEVEL_DEBUG, _table, vec_waypoints)
     local list_waypoints = make_list("System.Numerics.Vector3", table.unpack(vec_waypoints))
-    log_debug(list_waypoints)
-    log_debug_list(list_waypoints)
+    log_(LEVEL_DEBUG, _text, "List waypoints:", list_waypoints)
+    log_(LEVEL_DEBUG, _list, list_waypoints)
     IPC.vnavmesh.MoveTo(list_waypoints, fly)
 end
 
 function xyz_to_vec3(x, y, z)
     if y ~= nil and z ~= nil then
+        log_(LEVEL_VERBOSE, _text, "Converting coordinates to vector3", x, y, z)
         return Vector3(x, y, z)
     elseif y ~= nil or z ~= nil then
         StopScript("Invalid coordinates for WalkTo", CallerName(false), "Must provide either vec3 or x,y,z", "x:", x,
             "y:", y, "z:", z)
     else
+        log_(LEVEL_VERBOSE, _text, "Assuming provided value is already a vector3:", x)
         return x
     end
 end
@@ -1578,21 +1571,26 @@ function WalkTo(x, y, z, range)
     local ti = ResetTimeout()
     local p
     if range ~= nil then
+        log_(LEVEL_VERBOSE, _text, "Finding path to", pos, "with range", range)
         p = pathfind_with_tolerance(pos, false, range)
     else
+        log_(LEVEL_VERBOSE, _text, "Finding path to", pos)
         p = await(IPC.vnavmesh.Pathfind(Entity.Player.Position, pos, false))
     end
     if p.Count == 0 then
         StopScript("No path found", CallerName(false), "x:", x, "y:", y, "z:", z, "range:", range)
     end
+    log_(LEVEL_VERBOSE, _text, "Walking to", pos, "with range", range)
     IPC.vnavmesh.MoveTo(p, false)
     while (IPC.vnavmesh.IsRunning() or IPC.vnavmesh.PathfindInProgress()) do
         CheckTimeout(30, ti, CallerName(false), "Waiting for pathfind")
         if range ~= nil and Vector3.Distance(Entity.Player.Position, pos) <= range then
+            log_(LEVEL_VERBOSE, _text, "Stopping path because within range", range, "of target")
             IPC.vnavmesh.Stop()
         end
         wait(0.1)
     end
+    log_(LEVEL_VERBOSE, _text, "Arrived at", pos)
 end
 
 function pathfind_with_tolerance(vec3, fly, tolerance)
@@ -1615,17 +1613,17 @@ function ZoneTransition()
         CheckTimeout(30, ti, "ZoneTransition", "Waiting for zone transition to start")
         wait(0.1)
     until not Player.Entity.IsCasting
-    log_debug("Not casting")
+    log_(LEVEL_DEBUG, _text, "Not casting")
     repeat
         CheckTimeout(30, ti, "ZoneTransition", "Waiting for zone transition to start")
         wait(0.1)
     until not IsPlayerAvailable()
-    log_debug("Teleport started")
+    log_(LEVEL_DEBUG, _text, "Teleport started")
     repeat
         CheckTimeout(30, ti, "ZoneTransition", "Waiting for lifestream to finish")
         wait(0.1)
     until not IPC.Lifestream.IsBusy()
-    log_debug("Lifestream done")
+    log_(LEVEL_DEBUG, _text, "Lifestream done")
     repeat
         CheckTimeout(30, ti, "ZoneTransition", "Waiting for zone transition to end")
         while IPC.vnavmesh.BuildProgress() > 0 do
@@ -1634,10 +1632,9 @@ function ZoneTransition()
         end
         wait(0.1)
     until IsPlayerAvailable()
-    log_debug("Teleport done")
-
+    log_(LEVEL_DEBUG, _text, "Teleport done")
     wait_ready(30, 2)
-    log_debug("Ready!")
+    log_(LEVEL_DEBUG, _text, "Ready!")
 end
 
 function IsNearThing(thing, distance)
@@ -1957,6 +1954,10 @@ function get_item_info_by_id(item_id)
     end
 end
 
+function venture_count()
+    return Inventory.GetItemCount(21072)
+end
+
 function equip_gearset(gearset_name, update_after)
     update_after = default(update_after, false)
     local ti = ResetTimeout()
@@ -1967,14 +1968,14 @@ function equip_gearset(gearset_name, update_after)
                 gs:Equip()
                 wait_ready(10, 1)
             until Player.Gearset.Name == gearset_name
-            log_(LEVEL_INFO, log, "Gearset", gearset_name, "equipped")
+            log_(LEVEL_INFO, _text, "Gearset", gearset_name, "equipped")
             if update_after then
                 Player.Gearset:Update()
             end
             return true
         end
     end
-    log_(LEVEL_ERROR, log, "Gearset", gearset_name, "not found")
+    log_(LEVEL_ERROR, _text, "Gearset", gearset_name, "not found")
     return false
 end
 
@@ -1985,7 +1986,7 @@ function equip_classjob(classjob_abrev, update_after)
     for gs in luanet.each(Player.Gearsets) do
         if luminia_row_checked("ClassJob", gs.ClassJob).Abbreviation == classjob_abrev then
             gearset_name = gs.Name
-            log_(LEVEL_INFO, log, "Equipping gearset", gearset_name, "for class/job", classjob_abrev)
+            log_(LEVEL_INFO, _text, "Equipping gearset", gearset_name, "for class/job", classjob_abrev)
             repeat
                 CheckTimeout(10, ti, CallerName(false), "Couldnt equip gearset:", gearset_name)
                 gs:Equip()
@@ -1999,14 +2000,14 @@ function equip_classjob(classjob_abrev, update_after)
                 wait(0.4)
             until Player.Gearset.Name == gearset_name
             wait_ready(10, 1)
-            log_(LEVEL_VERBOSE, log, "Gearset", gearset_name, "equipped")
+            log_(LEVEL_VERBOSE, _text, "Gearset", gearset_name, "equipped")
             if update_after then
                 Player.Gearset:Update()
             end
             return true
         end
     end
-    log_(LEVEL_ERROR, log, "No gearset found for class/job", classjob_abrev)
+    log_(LEVEL_ERROR, _text, "No gearset found for class/job", classjob_abrev)
     return false
 end
 
@@ -2050,19 +2051,27 @@ function resolve_gearset_ids(number)
         return nil
     end
     local gs = deref_pointer(gearset_ptr, RaptureGearsetModule_GearsetEntry)
+    function _resolve_gearset_ids__get_item_id(slot)
+        local itemId = gs:GetItem(slot).ItemId
+        if itemId == 0 then
+            return nil
+        end
+        return itemId
+    end
+
     return {
-        MainHand = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.MainHand).ItemId,
-        OffHand = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.OffHand).ItemId,
-        Head = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.Head).ItemId,
-        Body = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.Body).ItemId,
-        Hands = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.Hands).ItemId,
-        Legs = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.Legs).ItemId,
-        Feet = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.Feet).ItemId,
-        Ears = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.Ears).ItemId,
-        Neck = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.Neck).ItemId,
-        Wrists = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.Wrists).ItemId,
-        LeftRing = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.RingLeft).ItemId,
-        RightRing = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.RingRight).ItemId,
+        MainHand = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.MainHand),
+        OffHand = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.OffHand),
+        Head = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Head),
+        Body = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Body),
+        Hands = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Hands),
+        Legs = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Legs),
+        Feet = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Feet),
+        Ears = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Ears),
+        Neck = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Neck),
+        Wrists = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Wrists),
+        LeftRing = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.RingLeft),
+        RightRing = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.RingRight),
     }
 end
 
@@ -2093,7 +2102,7 @@ function resolve_gearset_items(number)
     end
     for slot, gid in pairs(gearset_ids) do
         if gid ~= nil then
-            log_(LEVEL_ERROR, log, "Did not find item for slot", slot, "with id", gid, "in gearset", number)
+            log_(LEVEL_ERROR, _text, "Did not find item for slot", slot, "with id", gid, "in gearset", number)
         end
     end
     return items
@@ -2149,7 +2158,7 @@ function move_items(source_inv, dest_inv, pred)
                             need_move = false
                             wait(0)
                         else
-                            log_(LEVEL_INFO, log, "No space to move item to", dest_inv[dest_idx])
+                            log_(LEVEL_INFO, _text, "No space to move item to", dest_inv[dest_idx])
                             dest_idx = dest_idx + 1
                             if dest_idx <= #dest_inv then
                                 destinv = Inventory.GetInventoryContainer(dest_inv[dest_idx])
@@ -2183,7 +2192,7 @@ function open_map(map_name, partial_ok)
             if title == "Decipher" then
                 ready = true
             else
-                log_(LEVEL_ERROR, log, "SelectIconString found with unexpected title:", title)
+                log_(LEVEL_ERROR, _text, "SelectIconString found with unexpected title:", title)
                 close_addon("SelectIconString")
             end
         end
@@ -2193,7 +2202,7 @@ function open_map(map_name, partial_ok)
         end
     until ready
     if not SelectInList(map_name, "SelectIconString", partial_ok) then
-        log_(LEVEL_ERROR, log, "Map", map_name, "not found in map list")
+        log_(LEVEL_ERROR, _text, "Map", map_name, "not found in map list")
         return false
     end
     wait_any_addons("SelectYesno")
@@ -2329,23 +2338,23 @@ function wt_duty()
     for i = 0, 15 do
         local cell = Player.Bingo:GetWeeklyBingoTaskStatus(i)
         if cell ~= WeeklyBingoTaskStatus.Open then
-            log_debug("Bingo cell", i, "not available", cell)
+            log_(LEVEL_DEBUG, _text, "Bingo cell", i, "not available", cell)
         else
             local duty = Player.Bingo:GetWeeklyBingoOrderDataRow(i)
             local content = wt_pick_duty(duty)
             if content == nil then
-                log("Bingo cell", i, "not supported type", duty.Data, '-', wt_item_name(duty))
+                log_(LEVEL_INFO, _text, "Bingo cell", i, "not supported type", duty.Data, '-', wt_item_name(duty))
             else
                 -- try to do the duty
                 local instance_id = content.TerritoryType.RowId
                 local type, unsync = wt_duty_type(content)
                 if duty_executable(content) then
-                    log("Using:", type, unsync, '-', content.Name, '-', instance_id, '-',
+                    log_(LEVEL_INFO, _text, "Using:", type, unsync, '-', content.Name, '-', instance_id, '-',
                         IPC.AutoDuty.ContentHasPath(instance_id))
                     run_content(type, unsync, instance_id, wt_count)
                     return true
                 else
-                    log("Bingo cell", i, "not executable", duty.Data, '-', wt_item_name(duty))
+                    log_(LEVEL_INFO, _text, "Bingo cell", i, "not executable", duty.Data, '-', wt_item_name(duty))
                 end
             end
         end
@@ -2361,7 +2370,7 @@ function run_content(type, unsync, instance_id, validate)
         IPC.AutoDuty.Stop()
         InstancedContent.LeaveCurrentContent()
         if os.clock() - s > 60 then
-            log_(LEVEL_ERROR, log, "Failed to queue instance", instance_id, "blacklisting it.")
+            log_(LEVEL_ERROR, _text, "Failed to queue instance", instance_id, "blacklisting it.")
             table.insert(duty_blacklist, instance_id)
             return
         end
@@ -2376,7 +2385,7 @@ function run_content(type, unsync, instance_id, validate)
         wait(1)
     until IPC.AutoDuty.IsStopped()
     if validate() == pre_validation then
-        log_debug("Duty failed? Still in instance?", Svc.ClientState.TerritoryType, instance_id)
+        log_(LEVEL_DEBUG, _text, "Duty failed? Still in instance?", Svc.ClientState.TerritoryType, instance_id)
         table.insert(duty_blacklist, instance_id)
         if Svc.ClientState.TerritoryType == instance_id then
             InstancedContent.LeaveCurrentContent()
@@ -2402,8 +2411,8 @@ function setup_content(type, unsync)
         else
             command[3] = support_fill
         end
-        log_(LEVEL_INFO, log, "Setting trust members to")
-        log_(LEVEL_INFO, log_array, command)
+        log_(LEVEL_INFO, _text, "Setting trust members to")
+        log_(LEVEL_INFO, _array, command)
         IPC.AutoDuty.SetConfig("SelectedTrustMembers", command)
     elseif type == "Raids" and unsync then
         IPC.AutoDuty.SetConfig("dutyModeEnum", "Raid")
@@ -2420,17 +2429,18 @@ function duty_executable(content)
     local instance_id = content.TerritoryType.RowId
     local type, unsync = wt_duty_type(content)
     if not unsync and type ~= "Dungeons" then
-        log_debug("Not supported", content.Name, "type", type, "must be unsynced but allow undersized is", unsync)
+        log_(LEVEL_DEBUG, _text, "Not supported", content.Name, "type", type, "must be unsynced but allow undersized is",
+            unsync)
         return false
     elseif type == "Trials" and content.ClassJobLevelRequired > 70 then
-        log_debug("Not supported", content.Name, "type", type, "dont work well above level 70 but needs",
+        log_(LEVEL_DEBUG, _text, "Not supported", content.Name, "type", type, "dont work well above level 70 but needs",
             content.ClassJobLevelRequired)
         return false
     elseif not IPC.AutoDuty.ContentHasPath(instance_id) then
-        log_debug("Not supported", content.Name, "- No autoduty path")
+        log_(LEVEL_DEBUG, _text, "Not supported", content.Name, "- No autoduty path")
         return false
     elseif list_contains(duty_blacklist, instance_id) then
-        log("Blacklisted duty,", content.Name, '-', instance_id, "has been blacklisted")
+        log_(LEVEL_INFO, _text, "Blacklisted duty,", content.Name, '-', instance_id, "has been blacklisted")
         return false
     end
     return true

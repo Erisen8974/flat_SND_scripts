@@ -149,6 +149,8 @@ import 'System.Numerics'
 pcall(require, 'private/char_info')
 
 
+SCRIPT_TAG = "[EriSND]"
+
 -----------------------
 -- General Utilities --
 -----------------------
@@ -165,7 +167,7 @@ end
 function pause_pyes()
     pyes_pause_count = default(pyes_pause_count, 0)
     pyes_pause_count = pyes_pause_count + 1
-    get_shared_data("YesAlready.StopRequests", "System.Collections.Generic.HashSet`1[System.String]"):Add("EriSND")
+    get_shared_data("YesAlready.StopRequests", "System.Collections.Generic.HashSet`1[System.String]"):Add(SCRIPT_TAG)
 end
 
 function resume_pyes()
@@ -175,7 +177,7 @@ function resume_pyes()
     pyes_pause_count = pyes_pause_count - 1
     if pyes_pause_count == 0 then
         get_shared_data("YesAlready.StopRequests", "System.Collections.Generic.HashSet`1[System.String]"):Remove(
-            "EriSND")
+            SCRIPT_TAG)
         release_shared_data("YesAlready.StopRequests")
     end
 end
@@ -258,7 +260,7 @@ function close_yes_no(accept, expected_text)
         if expected_text ~= nil then
             local node = GetNodeText("SelectYesno", 1, 2)
             if node == nil or not node:upper():find(expected_text:upper()) then
-                log_debug("Expected yesno text '" .. expected_text .. "' didnt match actual text:", node)
+                log_(LEVEL_DEBUG, _text, "Expected yesno text '" .. expected_text .. "' didnt match actual text:", node)
                 return
             end
         end
@@ -360,10 +362,10 @@ function char_cannonical_name(char)
     if #potential_char == 1 then
         return title_case(potential_char[1])
     elseif #potential_char > 1 then
-        log_debug("Ambiguous character name", char, "candidates:", table.concat(potential_char, ", "))
+        log_(LEVEL_DEBUG, _text, "Ambiguous character name", char, "candidates:", table.concat(potential_char, ", "))
         return title_case(char)
     else
-        log_debug("Unknown character name", char)
+        log_(LEVEL_DEBUG, _text, "Unknown character name", char)
         return title_case(char)
     end
 end
@@ -395,10 +397,10 @@ function change_character(char, world, max_time)
 
     local target = string.format("%s@%s", char, world)
 
-    log_debug("Changing to character", target)
+    log_(LEVEL_DEBUG, _text, "Changing to character", target)
 
     if Player.Entity.Name == char and luminia_row_checked("World", Player.Entity.HomeWorld).Name == world then
-        log_debug("Already on target character", target)
+        log_(LEVEL_DEBUG, _text, "Already on target character", target)
         return
     end
 
@@ -414,16 +416,16 @@ function change_character(char, world, max_time)
         CheckTimeout(max_time, ti, "ZoneTransition", "Waiting for lifestream to finish")
         wait(10)
     until not IPC.Lifestream.IsBusy()
-    log_debug("Lifestream done")
+    log_(LEVEL_DEBUG, _text, "Lifestream done")
 
     repeat
         CheckTimeout(max_time, ti, "ZoneTransition", "Waiting for zone transition to end")
         wait(5)
     until IsPlayerAvailable()
 
-    log_debug("relog done")
+    log_(LEVEL_DEBUG, _text, "relog done")
     wait_ready(max_time, 2)
-    log_debug("Ready!")
+    log_(LEVEL_DEBUG, _text, "Ready!")
 end
 
 function is_busy()
@@ -513,7 +515,8 @@ function GetListElement(menu, index)
         StopScript("Unknown addon", CallerName(false), menu)
     end
     if tostring(n.NodeType):find("Text:") == nil then
-        log_debug("Not a text node", CallerName(false), "NodeType:", n.NodeType, "NodeId:", n.Id, name, menu, index)
+        log_(LEVEL_DEBUG, _text, "Not a text node", CallerName(false), "NodeType:", n.NodeType, "NodeId:", n.Id, name,
+            menu, index)
         return nil
     end
     return n.Text
@@ -546,7 +549,7 @@ function SelectInList(name, menu, partial_ok)
         for i = 0, 21 do
             local entry = GetListElement(menu, i)
             if entry == nil then break end
-            log_debug("List item", entry)
+            log_(LEVEL_DEBUG, _text, "List item", entry)
             local match = entry:upper() == string:upper()
             if not match and partial_ok then
                 match = entry:upper():find(string:upper())
@@ -671,7 +674,7 @@ function StopScript(message, caller, ...)
     if default(running_vnavmesh, false) or default(running_visland, false) or default(running_lifestream, false) or default(running_questy, false) then
         IPC.vnavmesh.Stop()
     end
-    luanet.error(logify(message, ...))
+    luanet.error(_text(message, ...))
 end
 
 function CallerName(string)
@@ -714,29 +717,21 @@ LEVEL_CRITICAL = 1
 
 debug_level = default(debug_level, LEVEL_ERROR)
 
-function log_(level, logger, ...)
+function log_(level, formatter, ...)
+    local msg = SCRIPT_TAG .. formatter(...)
+    if LEVEL_INFO >= level then
+        Dalamud.Log(msg)
+    elseif LEVEL_DEBUG >= level then
+        Dalamud.LogDebug(msg)
+    elseif LEVEL_VERBOSE >= level then
+        Dalamud.LogVerbose(msg)
+    end
     if debug_level >= level then
-        logger(...)
+        Svc.Chat:Print(...)
     end
 end
 
-function log_debug(...)
-    log_(LEVEL_DEBUG, log, ...)
-end
-
-function log_debug_array(...)
-    log_(LEVEL_DEBUG, log_array, ...)
-end
-
-function log_debug_table(...)
-    log_(LEVEL_DEBUG, log_table, ...)
-end
-
-function log_debug_list(...)
-    log_(LEVEL_DEBUG, log_list, ...)
-end
-
-function logify(first, ...)
+function _text(first, ...)
     local rest = table.pack(...)
     local message = tostring(first)
     for i = 1, rest.n do
@@ -746,47 +741,49 @@ function logify(first, ...)
 end
 
 function log(...)
-    local msg = logify(...)
-    Svc.Chat:Print(msg)
-    Dalamud.Log(msg)
+    log_(LEVEL_CRITICAL, _text, ...)
 end
 
-function log_count(list, c)
+function _count(list, c, type)
+    local msg = default(type, 'collection') .. ':'
     for i = 0, c - 1 do
-        log(tostring(i) .. ': ' .. tostring(list[i]))
+        msg = msg .. '\n' .. tostring(i) .. ': ' .. tostring(list[i])
     end
+    return msg
 end
 
-function log_iterable(it)
-    log('---', it, '---')
+function _iterable(it)
+    local msg = '---' .. tostring(it) .. '---'
     for i in luanet.each(it) do
-        log(i)
+        msg = msg .. '\n' .. tostring(i)
     end
-    log('--- end ---')
+    return msg .. '\n--- end ---'
 end
 
-function log_list(list)
+function _list(list)
     local c = list.Count
     if c == nil then
-        log("Not a list (No Count property)", list)
+        return "Not a list (No Count property): " .. tostring(list)
     else
-        log_count(list, c)
+        return _count(list, c, 'list')
     end
 end
 
-function log_array(array)
+function _array(array)
     local c = array.Length
     if c == nil then
-        log("Not a array (No Length property)", array)
+        return "Not an array (No Length property): " .. tostring(array)
     else
-        log_count(array, c)
+        return _count(array, c, 'array')
     end
 end
 
-function log_table(list)
+function _table(list)
+    local msg = 'table:'
     for i, v in pairs(list) do
-        log(tostring(i) .. ': ' .. tostring(v))
+        msg = msg .. '\n' .. tostring(i) .. ': ' .. tostring(v)
     end
+    return msg
 end
 
 -----------------------
@@ -794,27 +791,21 @@ end
 -----------------------
 
 
-global_wait_info = {
-    current_timed_function = nil,
-    current_timed_start = 0
-}
-
 function ResetTimeout()
-    global_wait_info = {
-        current_timed_function = CallerName(),
-        current_timed_start = os.clock()
-    }
-    return global_wait_info
+    return os.clock()
 end
 
-function CheckTimeout(max_duration, wait_info, caller_name, ...)
-    wait_info = default(wait_info, global_wait_info)
-    if wait_info == global_wait_info and CallerName() ~= wait_info.current_timed_function then
-        wait_info = ResetTimeout()
+function CheckTimeout(max_duration, wait_info, context, ...)
+    if wait_info == nil then
+        StopScript("wait_info is nil", CallerName(false), "Must be initialized with ResetTimeout()", "context:",
+            default(context, CallerName(false)), ...)
     end
-    max_duration = default(max_duration, 30)
-    if os.clock() > wait_info.current_timed_start + max_duration then
-        StopScript("Max duration reached", default(caller_name, CallerName(false)), ...)
+    if max_duration == nil then
+        StopScript("max_duration is nil", CallerName(false), "Must be provided", "context:",
+            default(context, CallerName(false)), ...)
+    end
+    if os.clock() > wait_info + max_duration then
+        StopScript("Max duration reached", default(context, CallerName(false)), ...)
     end
 end
 
@@ -859,29 +850,29 @@ end
 
 function make_list(content_type, ...)
     local t = Type.GetType(("System.Collections.Generic.List`1[%s]"):format(content_type))
-    log_(LEVEL_VERBOSE, log, "Making list of type", t)
+    log_(LEVEL_VERBOSE, _text, "Making list of type", t)
     local l = Activator.CreateInstance(t)
-    log_(LEVEL_VERBOSE, log, "List made", l)
+    log_(LEVEL_VERBOSE, _text, "List made", l)
     local args = table.pack(...)
     for i = 1, args.n do
         l:Add(args[i])
     end
-    log_(LEVEL_VERBOSE, log, "Initial items added")
-    log_(LEVEL_VERBOSE, log_iterable, l)
+    log_(LEVEL_VERBOSE, _text, "Initial items added")
+    log_(LEVEL_VERBOSE, _iterable, l)
     return l
 end
 
 function make_set(content_type, ...)
     local t = Type.GetType(("System.Collections.Generic.HashSet`1[%s]"):format(content_type))
-    log_(LEVEL_VERBOSE, log, "Making set of type", t)
+    log_(LEVEL_VERBOSE, _text, "Making set of type", t)
     local l = Activator.CreateInstance(t)
-    log_(LEVEL_VERBOSE, log, "Set made", l)
+    log_(LEVEL_VERBOSE, _text, "Set made", l)
     local args = table.pack(...)
     for i = 1, args.n do
         l:Add(args[i])
     end
-    log_(LEVEL_VERBOSE, log, "Initial items added")
-    log_(LEVEL_VERBOSE, log_iterable, l)
+    log_(LEVEL_VERBOSE, _text, "Initial items added")
+    log_(LEVEL_VERBOSE, _iterable, l)
     return l
 end
 
@@ -894,8 +885,8 @@ function make_instance_args(ctype, args_table)
     local arg_array = luanet.make_array(Object, { ctype, args })
     local instance = CreateInstance:Invoke(nil, arg_array)
     if arg_array == instance then
-        log_array(args)
-        log_array(arg_array)
+        log_(LEVEL_CRITICAL, _array, args)
+        log_(LEVEL_CRITICAL, _array, arg_array)
         StopScript("Failed to make instance", CallerName(false), "type:", ctype, "args:", args)
     end
     return instance
@@ -932,11 +923,11 @@ end
 
 function load_type(type_path, assembly)
     assembly = default(assembly, assembly_name(type_path))
-    log_(LEVEL_VERBOSE, log, "Loading assembly", assembly)
+    log_(LEVEL_VERBOSE, _text, "Loading assembly", assembly)
     luanet.load_assembly(assembly)
-    log_(LEVEL_VERBOSE, log, "Wrapping type", type_path)
+    log_(LEVEL_VERBOSE, _text, "Wrapping type", type_path)
     local type_var = luanet.import_type(type_path)
-    log_(LEVEL_VERBOSE, log, "Wrapped type", type_var)
+    log_(LEVEL_VERBOSE, _text, "Wrapped type", type_var)
     return type_var, luanet.ctype(type_var)
 end
 
@@ -1174,7 +1165,7 @@ shared_data_cache = {}
 
 function require_ipc(ipc_signature, result_type, arg_types)
     if ipc_cache_actions[ipc_signature] ~= nil or ipc_cache_functions[ipc_signature] ~= nil then
-        log_(LEVEL_VERBOSE, log, "IPC already loaded", ipc_signature)
+        log_(LEVEL_VERBOSE, _text, "IPC already loaded", ipc_signature)
         return
     end
     arg_types = default(arg_types, {})
@@ -1195,10 +1186,10 @@ function require_ipc(ipc_signature, result_type, arg_types)
         StopScript("IPC not found", CallerName(false), "signature:", ipc_signature)
     end
     if result_type == nil then
-        log_(LEVEL_DEBUG, log, "loaded action IPC", ipc_signature)
+        log_(LEVEL_DEBUG, _text, "loaded action IPC", ipc_signature)
         ipc_cache_actions[ipc_signature] = subscriber
     else
-        log_(LEVEL_DEBUG, log, "loaded function IPC", ipc_signature)
+        log_(LEVEL_DEBUG, _text, "loaded function IPC", ipc_signature)
         ipc_cache_functions[ipc_signature] = subscriber
     end
 end
@@ -1241,12 +1232,12 @@ end
 function release_shared_data(tag)
     if tag == nil then
         for t, _ in pairs(shared_data_cache) do
-            log_(LEVEL_VERBOSE, log, "Releasing shared data", t)
+            log_(LEVEL_VERBOSE, _text, "Releasing shared data", t)
             Svc.PluginInterface:RelinquishData(t)
         end
         shared_data_cache = {}
     else
-        log_(LEVEL_VERBOSE, log, "Releasing shared data", tag)
+        log_(LEVEL_VERBOSE, _text, "Releasing shared data", tag)
         Svc.PluginInterface:RelinquishData(tag)
         shared_data_cache[tag] = nil
     end
@@ -1278,9 +1269,9 @@ function TownPath(town, x, y, z, shard, dest_town, ...)
     wait_ready(10, 1)
     local current_town = luminia_row_checked("TerritoryType", Svc.ClientState.TerritoryType).PlaceName.Name
     if list_contains(alt_zones, current_town) then
-        log_debug("Already in", current_town)
+        log_(LEVEL_DEBUG, _text, "Already in", current_town)
     else
-        log_debug("Moving to", town, "from", current_town)
+        log_(LEVEL_DEBUG, _text, "Moving to", town, "from", current_town)
         repeat
             yield("/tp " .. tostring(town))
             wait(1)
@@ -1292,11 +1283,11 @@ function TownPath(town, x, y, z, shard, dest_town, ...)
         local nearest_shard = closest_aethershard()
         local shard_name = luminia_row_checked("Aetheryte", nearest_shard.DataId).AethernetName.Name
         if current_town == dest_town and path_distance_to(Vector3(x, y, z)) < path_distance_to(nearest_shard.Position) then
-            log_debug("Already nearer to", x, y, z, "than to aethernet", shard_name)
+            log_(LEVEL_DEBUG, _text, "Already nearer to", x, y, z, "than to aethernet", shard_name)
         elseif shard_name == shard then
-            log_debug("Nearest shard is already", shard_name)
+            log_(LEVEL_DEBUG, _text, "Nearest shard is already", shard_name)
         else
-            log_debug("Walking to shard", nearest_shard.DataId, shard_name, "to warp to", shard)
+            log_(LEVEL_DEBUG, _text, "Walking to shard", nearest_shard.DataId, shard_name, "to warp to", shard)
             WalkTo(nearest_shard.Position, nil, nil, 7)
             running_lifestream = true
             yield("/li " .. tostring(shard))
@@ -1401,17 +1392,17 @@ function move_near_point(spot, radius, fly)
     local result, fly_result
     target.Y = target.Y + 0.5
     if fly then
-        log_(LEVEL_DEBUG, log, "Looking for mesh point in range", radius, "of", target)
+        log_(LEVEL_DEBUG, _text, "Looking for mesh point in range", radius, "of", target)
         fly_result = IPC.vnavmesh.NearestPoint(target, radius, radius)
     end
-    log_(LEVEL_DEBUG, log, "Looking for floor point in range", radius, "of", target)
+    log_(LEVEL_DEBUG, _text, "Looking for floor point in range", radius, "of", target)
     result = IPC.vnavmesh.PointOnFloor(target, false, radius)
 
     if result == nil or (fly and fly_result == nil) then
-        log_(LEVEL_ERROR, log, "No valid point found in range", radius, "of", spot, "searched from", target)
+        log_(LEVEL_ERROR, _text, "No valid point found in range", radius, "of", spot, "searched from", target)
         return false
     end
-    log_(LEVEL_DEBUG, log, "Found point in area", result, fly_result)
+    log_(LEVEL_DEBUG, _text, "Found point in area", result, fly_result)
     local path, fly_path
     if fly_result == nil or Vector3.Distance(Player.Entity.Position, result) < FLY_THRESHOLD then
         path = pathfind_with_tolerance(result, false, radius)
@@ -1524,7 +1515,7 @@ function walk_path(path, fly, range, stop_if_stuck, ref_point)
         end
         if not fly or GetCharacterCondition(4) then
             if stop_if_stuck and Vector3.Distance(last_pos, cur_pos) < stop_if_stuck then
-                log_(LEVEL_ERROR, log, "Antistuck triggered!")
+                log_(LEVEL_ERROR, _text, "Antistuck triggered!")
                 IPC.vnavmesh.Stop()
             end
             last_pos = cur_pos
@@ -1556,9 +1547,9 @@ end
 function custom_path(fly, waypoints)
     running_vnavmesh = true
     local vec_waypoints = {}
-    log_debug("Setting up")
-    log_debug_table(vec_waypoints)
-    log_debug_table(waypoints)
+    log_(LEVEL_DEBUG, _text, "Setting up")
+    log_(LEVEL_DEBUG, _table, vec_waypoints)
+    log_(LEVEL_DEBUG, _table, "Waypoints:", waypoints)
     for i, waypoint in pairs(waypoints) do
         if type(waypoint) == "table" then
             local x, y, z = table.unpack(waypoint)
@@ -1569,21 +1560,23 @@ function custom_path(fly, waypoints)
             StopScript("Invalid waypoint type", CallerName(false), "Type:", type(waypoint))
         end
     end
-    log_debug("Calling moveto")
-    log_debug_table(vec_waypoints)
+    log_(LEVEL_DEBUG, _text, "Calling moveto")
+    log_(LEVEL_DEBUG, _table, vec_waypoints)
     local list_waypoints = make_list("System.Numerics.Vector3", table.unpack(vec_waypoints))
-    log_debug(list_waypoints)
-    log_debug_list(list_waypoints)
+    log_(LEVEL_DEBUG, _text, "List waypoints:", list_waypoints)
+    log_(LEVEL_DEBUG, _list, list_waypoints)
     IPC.vnavmesh.MoveTo(list_waypoints, fly)
 end
 
 function xyz_to_vec3(x, y, z)
     if y ~= nil and z ~= nil then
+        log_(LEVEL_VERBOSE, _text, "Converting coordinates to vector3", x, y, z)
         return Vector3(x, y, z)
     elseif y ~= nil or z ~= nil then
         StopScript("Invalid coordinates for WalkTo", CallerName(false), "Must provide either vec3 or x,y,z", "x:", x,
             "y:", y, "z:", z)
     else
+        log_(LEVEL_VERBOSE, _text, "Assuming provided value is already a vector3:", x)
         return x
     end
 end
@@ -1594,21 +1587,26 @@ function WalkTo(x, y, z, range)
     local ti = ResetTimeout()
     local p
     if range ~= nil then
+        log_(LEVEL_VERBOSE, _text, "Finding path to", pos, "with range", range)
         p = pathfind_with_tolerance(pos, false, range)
     else
+        log_(LEVEL_VERBOSE, _text, "Finding path to", pos)
         p = await(IPC.vnavmesh.Pathfind(Entity.Player.Position, pos, false))
     end
     if p.Count == 0 then
         StopScript("No path found", CallerName(false), "x:", x, "y:", y, "z:", z, "range:", range)
     end
+    log_(LEVEL_VERBOSE, _text, "Walking to", pos, "with range", range)
     IPC.vnavmesh.MoveTo(p, false)
     while (IPC.vnavmesh.IsRunning() or IPC.vnavmesh.PathfindInProgress()) do
         CheckTimeout(30, ti, CallerName(false), "Waiting for pathfind")
         if range ~= nil and Vector3.Distance(Entity.Player.Position, pos) <= range then
+            log_(LEVEL_VERBOSE, _text, "Stopping path because within range", range, "of target")
             IPC.vnavmesh.Stop()
         end
         wait(0.1)
     end
+    log_(LEVEL_VERBOSE, _text, "Arrived at", pos)
 end
 
 function pathfind_with_tolerance(vec3, fly, tolerance)
@@ -1631,17 +1629,17 @@ function ZoneTransition()
         CheckTimeout(30, ti, "ZoneTransition", "Waiting for zone transition to start")
         wait(0.1)
     until not Player.Entity.IsCasting
-    log_debug("Not casting")
+    log_(LEVEL_DEBUG, _text, "Not casting")
     repeat
         CheckTimeout(30, ti, "ZoneTransition", "Waiting for zone transition to start")
         wait(0.1)
     until not IsPlayerAvailable()
-    log_debug("Teleport started")
+    log_(LEVEL_DEBUG, _text, "Teleport started")
     repeat
         CheckTimeout(30, ti, "ZoneTransition", "Waiting for lifestream to finish")
         wait(0.1)
     until not IPC.Lifestream.IsBusy()
-    log_debug("Lifestream done")
+    log_(LEVEL_DEBUG, _text, "Lifestream done")
     repeat
         CheckTimeout(30, ti, "ZoneTransition", "Waiting for zone transition to end")
         while IPC.vnavmesh.BuildProgress() > 0 do
@@ -1650,10 +1648,9 @@ function ZoneTransition()
         end
         wait(0.1)
     until IsPlayerAvailable()
-    log_debug("Teleport done")
-
+    log_(LEVEL_DEBUG, _text, "Teleport done")
     wait_ready(30, 2)
-    log_debug("Ready!")
+    log_(LEVEL_DEBUG, _text, "Ready!")
 end
 
 function IsNearThing(thing, distance)
@@ -1973,6 +1970,10 @@ function get_item_info_by_id(item_id)
     end
 end
 
+function venture_count()
+    return Inventory.GetItemCount(21072)
+end
+
 function equip_gearset(gearset_name, update_after)
     update_after = default(update_after, false)
     local ti = ResetTimeout()
@@ -1983,14 +1984,14 @@ function equip_gearset(gearset_name, update_after)
                 gs:Equip()
                 wait_ready(10, 1)
             until Player.Gearset.Name == gearset_name
-            log_(LEVEL_INFO, log, "Gearset", gearset_name, "equipped")
+            log_(LEVEL_INFO, _text, "Gearset", gearset_name, "equipped")
             if update_after then
                 Player.Gearset:Update()
             end
             return true
         end
     end
-    log_(LEVEL_ERROR, log, "Gearset", gearset_name, "not found")
+    log_(LEVEL_ERROR, _text, "Gearset", gearset_name, "not found")
     return false
 end
 
@@ -2001,7 +2002,7 @@ function equip_classjob(classjob_abrev, update_after)
     for gs in luanet.each(Player.Gearsets) do
         if luminia_row_checked("ClassJob", gs.ClassJob).Abbreviation == classjob_abrev then
             gearset_name = gs.Name
-            log_(LEVEL_INFO, log, "Equipping gearset", gearset_name, "for class/job", classjob_abrev)
+            log_(LEVEL_INFO, _text, "Equipping gearset", gearset_name, "for class/job", classjob_abrev)
             repeat
                 CheckTimeout(10, ti, CallerName(false), "Couldnt equip gearset:", gearset_name)
                 gs:Equip()
@@ -2015,14 +2016,14 @@ function equip_classjob(classjob_abrev, update_after)
                 wait(0.4)
             until Player.Gearset.Name == gearset_name
             wait_ready(10, 1)
-            log_(LEVEL_VERBOSE, log, "Gearset", gearset_name, "equipped")
+            log_(LEVEL_VERBOSE, _text, "Gearset", gearset_name, "equipped")
             if update_after then
                 Player.Gearset:Update()
             end
             return true
         end
     end
-    log_(LEVEL_ERROR, log, "No gearset found for class/job", classjob_abrev)
+    log_(LEVEL_ERROR, _text, "No gearset found for class/job", classjob_abrev)
     return false
 end
 
@@ -2066,19 +2067,27 @@ function resolve_gearset_ids(number)
         return nil
     end
     local gs = deref_pointer(gearset_ptr, RaptureGearsetModule_GearsetEntry)
+    function _resolve_gearset_ids__get_item_id(slot)
+        local itemId = gs:GetItem(slot).ItemId
+        if itemId == 0 then
+            return nil
+        end
+        return itemId
+    end
+
     return {
-        MainHand = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.MainHand).ItemId,
-        OffHand = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.OffHand).ItemId,
-        Head = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.Head).ItemId,
-        Body = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.Body).ItemId,
-        Hands = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.Hands).ItemId,
-        Legs = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.Legs).ItemId,
-        Feet = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.Feet).ItemId,
-        Ears = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.Ears).ItemId,
-        Neck = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.Neck).ItemId,
-        Wrists = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.Wrists).ItemId,
-        LeftRing = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.RingLeft).ItemId,
-        RightRing = gs:GetItem(RaptureGearsetModule_GearsetItemIndex.RingRight).ItemId,
+        MainHand = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.MainHand),
+        OffHand = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.OffHand),
+        Head = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Head),
+        Body = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Body),
+        Hands = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Hands),
+        Legs = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Legs),
+        Feet = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Feet),
+        Ears = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Ears),
+        Neck = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Neck),
+        Wrists = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Wrists),
+        LeftRing = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.RingLeft),
+        RightRing = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.RingRight),
     }
 end
 
@@ -2109,7 +2118,7 @@ function resolve_gearset_items(number)
     end
     for slot, gid in pairs(gearset_ids) do
         if gid ~= nil then
-            log_(LEVEL_ERROR, log, "Did not find item for slot", slot, "with id", gid, "in gearset", number)
+            log_(LEVEL_ERROR, _text, "Did not find item for slot", slot, "with id", gid, "in gearset", number)
         end
     end
     return items
@@ -2165,7 +2174,7 @@ function move_items(source_inv, dest_inv, pred)
                             need_move = false
                             wait(0)
                         else
-                            log_(LEVEL_INFO, log, "No space to move item to", dest_inv[dest_idx])
+                            log_(LEVEL_INFO, _text, "No space to move item to", dest_inv[dest_idx])
                             dest_idx = dest_idx + 1
                             if dest_idx <= #dest_inv then
                                 destinv = Inventory.GetInventoryContainer(dest_inv[dest_idx])
@@ -2199,7 +2208,7 @@ function open_map(map_name, partial_ok)
             if title == "Decipher" then
                 ready = true
             else
-                log_(LEVEL_ERROR, log, "SelectIconString found with unexpected title:", title)
+                log_(LEVEL_ERROR, _text, "SelectIconString found with unexpected title:", title)
                 close_addon("SelectIconString")
             end
         end
@@ -2209,7 +2218,7 @@ function open_map(map_name, partial_ok)
         end
     until ready
     if not SelectInList(map_name, "SelectIconString", partial_ok) then
-        log_(LEVEL_ERROR, log, "Map", map_name, "not found in map list")
+        log_(LEVEL_ERROR, _text, "Map", map_name, "not found in map list")
         return false
     end
     wait_any_addons("SelectYesno")
@@ -2321,10 +2330,10 @@ function ice_setting(name, value)
         StopScript("Bad setting name type", CallerName(false), "Settings names are strings, not", type(name), name)
     end
     if type(value) == "boolean" then
-        log_debug("Setting boolean", name, "to", value)
+        log_(LEVEL_DEBUG, _text, "Setting boolean", name, "to", value)
         ice_change_bool(name, value)
     elseif type(value) == "number" then
-        log_debug("Setting string", name, "to", value)
+        log_(LEVEL_DEBUG, _text, "Setting number", name, "to", value)
         ice_change_number(name, value)
     else
         StopScript("Bad setting type", CallerName(false), "Unexpected settings type", type(value), value)
@@ -2342,7 +2351,7 @@ end
 
 function set_missions(...)
     s = make_set('System.UInt32', ...)
-    log_(LEVEL_DEBUG, log_iterable, s)
+    log_(LEVEL_DEBUG, _iterable, s)
     ice_only_mission(s)
 end
 
@@ -2351,7 +2360,7 @@ function on_moon()
 end
 
 function return_to_craft()
-    log_(LEVEL_VERBOSE, log, "Craft return? Is crafter:", Player.Job.IsCrafter, "Setting enabled:", RETURN_TO_SPOT)
+    log_(LEVEL_VERBOSE, _text, "Craft return? Is crafter:", Player.Job.IsCrafter, "Setting enabled:", RETURN_TO_SPOT)
     if RETURN_TO_SPOT and Player.Job.IsCrafter then
         move_near_point(start_spot, RETURN_RADIUS)
     end
@@ -2360,7 +2369,7 @@ end
 function path_to_moon_thing(thing, distance)
     distance = default(distance, 3)
     if not on_moon() then
-        log_(LEVEL_INFO, "Must be on moon to path to moon thing")
+        log_(LEVEL_INFO, _text, "Must be on moon to path to moon thing")
         return false
     end
     local e = get_closest_entity(thing)
@@ -2371,7 +2380,7 @@ function path_to_moon_thing(thing, distance)
         path_len = path_length(path)
     end
     if path_len >= WALK_THRESHOLD then
-        log_(LEVEL_INFO, log, "Too far away or not found, returning to base")
+        log_(LEVEL_INFO, _text, "Too far away or not found, returning to base")
         Actions.ExecuteAction(42149)
         ZoneTransition()
         e = get_closest_entity(thing, true)
@@ -2425,25 +2434,24 @@ function item_is_lunar(item_id)
 end
 
 function move_lunar_weapons()
-    move_items(ALL_INVENTORIES, InventoryType.ArmoryMainHand, item_id_range(45591, 45689))
-    move_items(ALL_INVENTORIES, InventoryType.ArmoryMainHand, item_id_range(49009, 49063))
+    move_items(ALL_INVENTORIES, InventoryType.ArmoryMainHand, item_is_lunar)
 end
 
 --[[
     Broken cause gearset.items isnt valid...
     local wep_id = nil
-    log_(LEVEL_VERBOSE, log, "Items for gearset:", gs.Name, gs.BannerIndex, gs.IsValid)
+    log_(LEVEL_VERBOSE, _text, "Items for gearset:", gs.Name, gs.BannerIndex, gs.IsValid)
     for item in luanet.each(gs.Items) do
-        log_(LEVEL_VERBOSE, log, "--", item.ItemId, item.Container)
+        log_(LEVEL_VERBOSE, _text, "--", item.ItemId, item.Container)
         if item.Container == InventoryType.ArmoryMainHand then
             wep_id = item.ItemId
         end
     end
     if wep_id == nil then
-        log_(LEVEL_ERROR, log, "Main hand weapon not in gearset. Assuming not stellar.")
+        log_(LEVEL_ERROR, _text, "Main hand weapon not in gearset. Assuming not stellar.")
         return false
     end
-    log_(LEVEL_DEBUG, log, "Mainhand item id is", wep_id)
+    log_(LEVEL_DEBUG, _text, "Mainhand item id is", wep_id)
 --]]
 
 function turnin_mission()
@@ -2523,7 +2531,7 @@ function moon_path_to_fish(fish)
     end
     local path = await(IPC.vnavmesh.Pathfind(Player.Entity.Position, fish.Setup, false))
     if path_length(path) > fish.ReturnDist then
-        log_(LEVEL_INFO, log, "Too far away, returning to base")
+        log_(LEVEL_INFO, _text, "Too far away, returning to base")
         Actions.ExecuteAction(42149)
         ZoneTransition()
         path = await(IPC.vnavmesh.Pathfind(Player.Entity.Position, fish.Setup, false))
@@ -2550,7 +2558,7 @@ function start_fisher_mission(number)
     ice_setting("StopOnceHitCosmoCredits", false)
     ice_setting("StopOnceHitLunarCredits", false)
 
-    log_(LEVEL_INFO, log, "ICE Configured, starting mission")
+    log_(LEVEL_INFO, _text, "ICE Configured, starting mission")
 
     ice_enable()
 
@@ -2560,7 +2568,7 @@ function start_fisher_mission(number)
 
     ice_disable()
 
-    log_(LEVEL_INFO, log, "ICE started mission, running AH")
+    log_(LEVEL_INFO, _text, "ICE started mission, running AH")
 
     repeat
         IPC.AutoHook.DeleteAllAnonymousPresets()
@@ -2623,14 +2631,14 @@ function get_lunar_credits()
 end
 
 function do_upkeep()
-    log_(LEVEL_DEBUG, log, "Doing upkeep")
-    log_(LEVEL_DEBUG, log, "GAMBA_TIME:", GAMBA_TIME, "PROCESS_RETAINERS:", PROCESS_RETAINERS)
+    log_(LEVEL_DEBUG, _text, "Doing upkeep")
+    log_(LEVEL_DEBUG, _text, "GAMBA_TIME:", GAMBA_TIME, "PROCESS_RETAINERS:", PROCESS_RETAINERS)
     if GAMBA_TIME > 0 and get_lunar_credits() >= GAMBA_TIME then
-        log_(LEVEL_DEBUG, log, "Starting gamba")
+        log_(LEVEL_DEBUG, _text, "Starting gamba")
         start_gamba()
     end
     if PROCESS_RETAINERS and IPC.AutoRetainer.AreAnyRetainersAvailableForCurrentChara() then
-        log_(LEVEL_DEBUG, log, "Processing retainers")
+        log_(LEVEL_DEBUG, _text, "Processing retainers")
         moon_talk("Summoning Bell")
         repeat
             wait(1)
@@ -2641,7 +2649,7 @@ function do_upkeep()
 end
 
 function fish_relic(max)
-    log_(LEVEL_DEBUG, log, "Fish relic, Gamba limit:", GAMBA_TIME, "Max research:", max, "Handle retainers:",
+    log_(LEVEL_DEBUG, _text, "Fish relic, Gamba limit:", GAMBA_TIME, "Max research:", max, "Handle retainers:",
         PROCESS_RETAINERS)
     repeat
         do_upkeep()
@@ -2650,7 +2658,7 @@ function fish_relic(max)
         for t, need in pairs(exp) do
             if need > 0 then
                 ready = false
-                log_(LEVEL_INFO, log, "Need", need, "type", t, "research")
+                log_(LEVEL_INFO, _text, "Need", need, "type", t, "research")
                 if t == 1 or t == 2 then
                     start_fisher_mission(986)
                 elseif t == 3 or t == 4 or t == 5 then
@@ -2668,7 +2676,7 @@ function fish_relic(max)
 end
 
 function gather_relic(max)
-    log_(LEVEL_DEBUG, log, "Gather relic, Gamba limit:", GAMBA_TIME, "Max research:", max, "Handle retainers:",
+    log_(LEVEL_DEBUG, _text, "Gather relic, Gamba limit:", GAMBA_TIME, "Max research:", max, "Handle retainers:",
         PROCESS_RETAINERS)
     repeat
         local finished, ready, exp = false, false, nil
@@ -2681,7 +2689,7 @@ function gather_relic(max)
             for t, need in pairs(exp) do
                 if need > 0 then
                     ready = false
-                    log_(LEVEL_INFO, log, "Need", need, "type", t, "research")
+                    log_(LEVEL_INFO, _text, "Need", need, "type", t, "research")
 
                     ice_setting("OnlyGrabMission", false)
                     ice_setting("StopAfterCurrent", true)
@@ -2712,7 +2720,7 @@ function run_mission(relic_max, gamba_time, process_retainers)
     for t, need in pairs(exp) do
         if need > 0 then
             ready = false
-            log_(LEVEL_INFO, log, "Need", need, "type", t, "research")
+            log_(LEVEL_INFO, _text, "Need", need, "type", t, "research")
 
             ice_setting("OnlyGrabMission", false)
             ice_setting("StopAfterCurrent", true)
@@ -2745,23 +2753,23 @@ if Config.Get("DebugMessages") then
 end
 
 
-log_(LEVEL_INFO, log, "Gamba limit:", GAMBA_TIME, "Max research:", MAX_RESEARCH, "Handle retainers:", PROCESS_RETAINERS)
+log_(LEVEL_INFO, _text, "Gamba limit:", GAMBA_TIME, "Max research:", MAX_RESEARCH, "Handle retainers:",
+    PROCESS_RETAINERS)
 
 function run_current_job()
     local current_job = Player.Job
-    log_(LEVEL_INFO, log, "Starting auto relic on job", current_job.Name, "(" .. current_job.Abbreviation .. ")")
-
+    log_(LEVEL_INFO, _text, "Starting auto relic on job", current_job.Name, "(" .. current_job.Abbreviation .. ")")
     if current_job.Abbreviation == "FSH" then
         fish_relic(MAX_RESEARCH)
     elseif current_job.IsGatherer then
         gather_relic(MAX_RESEARCH)
     elseif current_job.IsCrafter then
-        log_(LEVEL_ERROR, log, "Crafters arent supported yet")                                  --craft_relic(MAX_RESEARCH)
+        log_(LEVEL_ERROR, _text, "Crafters arent supported yet")                                  --craft_relic(MAX_RESEARCH)
     else
-        log_(LEVEL_ERROR, log, "Invalid job", current_job.Name, "only gatherers are supported") -- update message when crafters are supported
+        log_(LEVEL_ERROR, _text, "Invalid job", current_job.Name, "only gatherers are supported") -- update message when crafters are supported
     end
 
-    log_(LEVEL_INFO, log, "Finished auto relic on job", current_job.Name, "(" .. current_job.Abbreviation .. ")")
+    log_(LEVEL_INFO, _text, "Finished auto relic on job", current_job.Name, "(" .. current_job.Abbreviation .. ")")
 end
 
 if JOBS_LIST.Count == 0 then
