@@ -582,10 +582,13 @@ function SafeCallback(addon, update, ...)
         local value = callback_table[i]
         if type(value) == "number" then
             call_command = call_command .. " " .. tostring(value)
+        elseif type(value) == "string" then
+            call_command = call_command .. " \"" .. value .. "\""
         else
-            StopScript("Callbacks have to use numbers!")
+            StopScript("Callbacks have to use numbers or strings!")
         end
     end
+    log_(LEVEL_VERBOSE, _text, "Calling addon with command", call_command)
     if IsAddonReady(addon) then
         yield(call_command)
     end
@@ -648,12 +651,20 @@ function StopScript(message, caller, ...)
     luanet.error(_text(message, ...))
 end
 
+NO_CALL_INFO = true
+
 function CallerName(string)
+    if NO_CALL_INFO then
+        return "(unknown caller)"
+    end
     string = default(string, true)
     return debug_info_tostring(debug.getinfo(3), string)
 end
 
 function FunctionInfo(string)
+    if NO_CALL_INFO then
+        return "(unknown function)"
+    end
     string = default(string, true)
     return debug_info_tostring(debug.getinfo(2), string)
 end
@@ -732,26 +743,26 @@ function _iterable(it)
     return msg .. '\n--- end ---'
 end
 
-function _list(list)
+function _list(list, header)
     local c = list.Count
     if c == nil then
         return "Not a list (No Count property): " .. tostring(list)
     else
-        return _count(list, c, 'list')
+        return _count(list, c, default(header, 'list'))
     end
 end
 
-function _array(array)
+function _array(array, header)
     local c = array.Length
     if c == nil then
         return "Not an array (No Length property): " .. tostring(array)
     else
-        return _count(array, c, 'array')
+        return _count(array, c, default(header, 'array'))
     end
 end
 
-function _table(list)
-    local msg = 'table:'
+function _table(list, header)
+    local msg = default(header, 'table:')
     for i, v in pairs(list) do
         msg = msg .. '\n' .. tostring(i) .. ': ' .. tostring(v)
     end
@@ -1230,6 +1241,7 @@ end
 import "System.Numerics"
 import "System"
 
+local SPRINT_THRESHOLD = 10
 local WALK_THRESHOLD = 35
 local FLY_THRESHOLD = 100
 
@@ -1243,7 +1255,7 @@ function TownPath(town, x, y, z, shard, dest_town, ...)
     else
         log_(LEVEL_DEBUG, _text, "Moving to", town, "from", current_town)
         repeat
-            yield("/tp " .. tostring(town))
+            IPC.Lifestream.ExecuteCommand(tostring(town))
             wait(1)
         until Player.Entity.IsCasting
         ZoneTransition()
@@ -1251,16 +1263,18 @@ function TownPath(town, x, y, z, shard, dest_town, ...)
 
     if shard ~= nil then
         local nearest_shard = closest_aethershard()
-        local shard_name = luminia_row_checked("Aetheryte", nearest_shard.DataId).AethernetName.Name
-        if current_town == dest_town and path_distance_to(Vector3(x, y, z)) < path_distance_to(nearest_shard.Position) then
+        local shard_pos = nearest_shard.Position
+        local shard_dataid = nearest_shard.DataId
+        local shard_name = luminia_row_checked("Aetheryte", shard_dataid).AethernetName.Name
+        if current_town == dest_town and path_distance_to(Vector3(x, y, z)) < path_distance_to(shard_pos) then
             log_(LEVEL_DEBUG, _text, "Already nearer to", x, y, z, "than to aethernet", shard_name)
         elseif shard_name == shard then
             log_(LEVEL_DEBUG, _text, "Nearest shard is already", shard_name)
         else
-            log_(LEVEL_DEBUG, _text, "Walking to shard", nearest_shard.DataId, shard_name, "to warp to", shard)
-            WalkTo(nearest_shard.Position, nil, nil, 7)
+            log_(LEVEL_DEBUG, _text, "Walking to shard", shard_dataid, shard_name, "to warp to", shard)
+            WalkTo(shard_pos, nil, nil, 7)
             running_lifestream = true
-            yield("/li " .. tostring(shard))
+            IPC.Lifestream.ExecuteCommand(tostring(shard))
             ZoneTransition()
         end
     end
@@ -1519,7 +1533,7 @@ function custom_path(fly, waypoints)
     local vec_waypoints = {}
     log_(LEVEL_DEBUG, _text, "Setting up")
     log_(LEVEL_DEBUG, _table, vec_waypoints)
-    log_(LEVEL_DEBUG, _table, "Waypoints:", waypoints)
+    log_(LEVEL_DEBUG, _table, waypoints, "Waypoints:")
     for i, waypoint in pairs(waypoints) do
         if type(waypoint) == "table" then
             local x, y, z = table.unpack(waypoint)
@@ -1567,7 +1581,15 @@ function WalkTo(x, y, z, range)
         StopScript("No path found", CallerName(false), "x:", x, "y:", y, "z:", z, "range:", range)
     end
     log_(LEVEL_VERBOSE, _text, "Walking to", pos, "with range", range)
+    if path_length(p) > SPRINT_THRESHOLD then
+        log_(LEVEL_VERBOSE, _text, "Path is long, sprinting")
+        Actions.ExecuteGeneralAction(4)
+    else
+        log_(LEVEL_VERBOSE, _text, "Path is short, walking normally")
+    end
+
     IPC.vnavmesh.MoveTo(p, false)
+
     while (IPC.vnavmesh.IsRunning() or IPC.vnavmesh.PathfindInProgress()) do
         CheckTimeout(30, ti, CallerName(false), "Waiting for pathfind")
         if range ~= nil and Vector3.Distance(Entity.Player.Position, pos) <= range then
