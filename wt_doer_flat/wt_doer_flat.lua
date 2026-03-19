@@ -545,7 +545,6 @@ end
 
 function ListContents(menu)
     menu = default(menu, "ContextMenu")
-    local offsets = ListSelectionType[menu]
     wait_any_addons(menu)
     local list_items = {}
     for i = 0, 21 do
@@ -1019,11 +1018,9 @@ function load_type(type_path, assembly)
         table.insert(LOADED_ASSEMBLIES, assembly)
     end
     if not TYPE_CACHE[type_path] then
-        log_(LEVEL_VERBOSE, _text, "Loading assembly", assembly)
-        luanet.load_assembly(assembly)
-        log_(LEVEL_VERBOSE, _text, "Wrapping type", type_path)
+        log_(LEVEL_VERBOSE, _text, "Loading type", type_path)
         local type_var = luanet.import_type(type_path)
-        log_(LEVEL_VERBOSE, _text, "Wrapped type", type_var)
+        log_(LEVEL_VERBOSE, _text, "Loaded type", type_var)
         TYPE_CACHE[type_path] = type_var
     end
     type_var = TYPE_CACHE[type_path]
@@ -2256,6 +2253,69 @@ function item_in_gearset(in_gearset)
         end
         return not in_gearset
     end
+end
+
+function restock_crystals(target)
+    local need_restock = false
+    for slot = 0, 17 do
+        if Inventory.GetInventoryItemBySlot(InventoryType.Crystals, slot).Count < target then
+            need_restock = true
+            break
+        end
+    end
+    if not need_restock then
+        return true
+    end
+    --TODO: open inv or assume its open already?
+    -- probably assume the retainer is open but open the retainer inv here
+    local fully_stocked = true
+    for slot = 0, 17 do
+        if not __restock_crystals(slot, target) then
+            fully_stocked = false
+        end
+    end
+    return fully_stocked
+end
+
+function __restock_crystals(slot, target)
+    local cur = Inventory.GetInventoryItemBySlot(InventoryType.Crystals, slot).Count
+    if cur >= target then
+        return true
+    end
+    local need = target - cur
+    local avail = Inventory.GetInventoryItemBySlot(InventoryType.RetainerCrystals, slot).Count
+    if avail <= need then
+        if avail > 0 then
+            Inventory.GetInventoryItemBySlot(InventoryType.RetainerCrystals, slot):MoveItemSlot(InventoryType.Crystals)
+        end
+        return avail == need
+    end
+    move_partial_stack(InventoryType.RetainerCrystals, slot, need)
+    return true
+end
+
+function move_partial_stack(src_inv, src_slot, count)
+    if not any_addons_ready("InventoryRetainer") then
+        StopScript("RetainerInvNotOpen", CallerName(false), "Must have the retainer inventory panel open")
+    end
+    local available = Inventory.GetInventoryItemBySlot(src_inv, src_slot).Count
+    if available <= count then
+        StopScript("NotEnoughItems", CallerName(false), "Requested partial move", count, "but slot only has", available)
+    end
+    local menu_entry = "Retrieve Quantity"
+    if list_contains({ InventoryType.Crystals, InventoryType.RetainerCrystals }, src_inv) then
+        menu_entry = "Retrieve from Retainer"
+    end
+    pause_pyes()
+    local inst = cs_instance("FFXIVClientStructs.FFXIV.Client.UI.Agent.AgentInventoryContext")
+    --- just ignore all those extra args, the context menu is completely invalid anyway...
+    inst:OpenForItemSlot(src_inv, src_slot, 0, 0)
+    --- danger zone: if the context menu goes away other than the callback in SelectInList the game will crash...
+    SelectInList(menu_entry)
+    --- perfectly safe :)
+    wait_any_addons("InputNumeric")
+    SafeCallback("InputNumeric", true, count)
+    resume_pyes()
 end
 
 function move_items(source_inv, dest_inv, pred)
