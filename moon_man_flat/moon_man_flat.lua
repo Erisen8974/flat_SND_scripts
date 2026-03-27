@@ -2161,7 +2161,7 @@ function equip_classjob(classjob_abrev, update_after)
 end
 
 function move_to_inventory(item)
-    for _, destination in pairs(ALL_INVENTORIES) do
+    for _, destination in pairs(ALL_INVENTORY) do
         if Inventory.GetInventoryContainer(destination).FreeSlots > 0 then
             item:MoveItemSlot(destination)
             return true
@@ -2662,7 +2662,7 @@ function item_is_lunar(item_id)
 end
 
 function move_lunar_weapons()
-    move_items(ALL_INVENTORIES, InventoryType.ArmoryMainHand, item_is_lunar)
+    move_items(ALL_INVENTORY, InventoryType.ArmoryMainHand, item_is_lunar)
 end
 
 --[[
@@ -2754,6 +2754,7 @@ known_fissions = {
 
 function moon_path_to_fish(fish)
     running_vnavmesh = true
+    ---@diagnostic disable-next-line: undefined-field
     if Vector3.Distance(Player.Entity.Position, fish.Fish) < 2 then
         return -- already here
     end
