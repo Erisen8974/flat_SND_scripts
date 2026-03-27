@@ -110,11 +110,11 @@ end
 function GetNodeText(name, ...)
     local a = Addons.GetAddon(name)
     if not a.Ready then
-        StopScript("Bad addon", CallerName(false), name)
+        error("Bad addon", CallerName(false), name)
     end
     local n = a:GetNode(...)
     if tostring(n.NodeType):find("Text:") == nil then
-        StopScript("Not a text node", CallerName(false), "NodeType:", n.NodeType, "NodeId:", n.Id, name, ...)
+        error("Not a text node", CallerName(false), "NodeType:", n.NodeType, "NodeId:", n.Id, name, ...)
     end
     return n.Text
 end
@@ -214,7 +214,7 @@ end
 function find_after(msg, target, after)
     e, s = msg:reverse():find(after:reverse())
     if e == nil then
-        return nil -- cant find something after something if the second thing doesnt exist!
+        return nil -- cant find something after something if the second thing doesn't exist!
     end
     return string.find(msg, target, -e)
 end
@@ -222,7 +222,7 @@ end
 function get_chat_messages(tab)
     local chat = GetNodeText("ChatLogPanel_" .. tostring(tab), 1, 2, 3)
     if chat == 2 then
-        StopScript("Error getting chat log")
+        error("Error getting chat log")
     end
     return chat
 end
@@ -249,11 +249,6 @@ function open_addon(addon, base_addon, ...)
     local ti = ResetTimeout()
     while not IsAddonReady(addon) do
         CheckTimeout(1, ti, CallerName(false), "Opening addon", addon)
-        if not IsAddonReady(base_addon) then
-            StopScript("open_addon failed", CallerName(false), "Failed opening", addon,
-                "base addon missing or not ready",
-                base_addon)
-        end
         SafeCallback(base_addon, ...)
         wait(0.1)
     end
@@ -280,13 +275,21 @@ function talk(who, what_addon)
     until IsAddonReady(what_addon)
 end
 
-function close_yes_no(accept, expected_text)
+function close_yes_no(accept, expected_text, mandatory)
+    mandatory = default(mandatory, false)
     accept = default(accept, false)
+    if mandatory then
+        wait_any_addons("SelectYesno")
+    end
     if IsAddonReady("SelectYesno") then
         if expected_text ~= nil then
             local node = GetNodeText("SelectYesno", 1, 2)
             if node == nil or not node:upper():find(expected_text:upper()) then
                 log_(LEVEL_DEBUG, _text, "Expected yesno text '" .. expected_text .. "' didnt match actual text:", node)
+                if mandatory then
+                    error("Wrong yesno", CallerName(false), "Expected yesno text", expected_text,
+                        "did not match actual text", node)
+                end
                 return
             end
         end
@@ -498,11 +501,11 @@ end
 function luminia_row_checked(table, id)
     local sheet = Excel.GetSheet(table)
     if sheet == nil then
-        StopScript("Unknown sheet", CallerName(false), "sheet not found for", table)
+        error("Unknown sheet", CallerName(false), "sheet not found for", table)
     end
     local row = sheet:GetRow(id)
     if row == nil then
-        StopScript("Unknown id", CallerName(false), "Id not found in excel data", table, id)
+        error("Unknown id", CallerName(false), "Id not found in excel data", table, id)
     end
     return row
 end
@@ -510,11 +513,11 @@ end
 function atk_data_checked(addon, index)
     local w = Addons.GetAddon(addon)
     if not (w.Exists and w.Ready) then
-        StopScript("No addon", CallerName(false), "addon", addon, "not ready")
+        error("No addon", CallerName(false), "addon", addon, "not ready")
     end
     local r = w:GetAtkValue(index)
     if r == nil then
-        StopScript("Bad atk index", CallerName(false), "addon", addon, "does not have index", index)
+        error("Bad atk index", CallerName(false), "addon", addon, "does not have index", index)
     end
     return r.ValueString
 end
@@ -537,7 +540,7 @@ end
 function GetListElement(menu, index)
     local a = Addons.GetAddon(menu)
     if not a.Ready then
-        StopScript("Bad addon", CallerName(false), menu)
+        error("Bad addon", CallerName(false), menu)
     end
     local n = nil
     if menu == "ContextMenu" then
@@ -547,7 +550,7 @@ function GetListElement(menu, index)
     elseif menu == "SelectString" or menu == "SelectIconString" then
         n = a:GetNode(1, 3, list_index(5, index), 2)
     else
-        StopScript("Unknown addon", CallerName(false), menu)
+        error("Unknown addon", CallerName(false), menu)
     end
     if tostring(n.NodeType):find("Text:") == nil then
         log_(LEVEL_DEBUG, _text, "Not a text node", CallerName(false), "NodeType:", n.NodeType, "NodeId:", n.Id, name,
@@ -654,12 +657,12 @@ function SafeCallback(addon, update, ...)
     pause_pyes()
     local callback_table = table.pack(...)
     if type(addon) ~= "string" then
-        StopScript("addonname must be a string")
+        error("addonname must be a string")
     end
     if type(update) == "boolean" then
         update = tostring(update)
     else
-        StopScript("update must be a bool")
+        error("update must be a bool")
     end
 
     local call_command = "/callback " .. addon .. " " .. update
@@ -670,7 +673,7 @@ function SafeCallback(addon, update, ...)
         elseif type(value) == "string" then
             call_command = call_command .. " \"" .. value .. "\""
         else
-            StopScript("Callbacks have to use numbers or strings!")
+            error("Callbacks have to use numbers or strings!")
         end
     end
     log_(LEVEL_DEBUG, _text, "Calling addon with command", call_command)
@@ -690,7 +693,7 @@ function bool_to_string(state, true_string, false_string)
             return false_string
         end
     else
-        StopScript("state must be a bool")
+        error("state must be a bool")
     end
 end
 
@@ -710,7 +713,7 @@ function string_to_bool(str, truey_values, falsey_values)
             return false
         end
     end
-    StopScript("InvalidBooleanString", CallerName(false), str)
+    error("InvalidBooleanString", CallerName(false), str)
 end
 
 --------------------
@@ -733,11 +736,11 @@ function require_plugins(plugins)
         end
     end
     if #plugins > 0 then
-        StopScript("Missing required plugins", CallerName(false), "Missing plugins:", table.concat(plugins, ", "))
+        error("Missing required plugins", CallerName(false), "Missing plugins:", table.concat(plugins, ", "))
     end
 end
 
-function StopScript(message, caller, ...)
+function error(message, caller, ...)
     caller = default(caller, CallerName())
     log("Fatal error " .. message .. " in " .. caller .. ": ", ...)
     if default(running_questy, false) then
@@ -761,7 +764,7 @@ function StopScript(message, caller, ...)
     luanet.error(_text(message, ...))
 end
 
-NO_CALL_INFO = true
+NO_CALL_INFO = false
 
 function CallerName(string)
     if NO_CALL_INFO then
@@ -890,15 +893,15 @@ end
 
 function CheckTimeout(max_duration, wait_info, context, ...)
     if wait_info == nil then
-        StopScript("wait_info is nil", CallerName(false), "Must be initialized with ResetTimeout()", "context:",
+        error("wait_info is nil", CallerName(false), "Must be initialized with ResetTimeout()", "context:",
             default(context, CallerName(false)), ...)
     end
     if max_duration == nil then
-        StopScript("max_duration is nil", CallerName(false), "Must be provided", "context:",
+        error("max_duration is nil", CallerName(false), "Must be provided", "context:",
             default(context, CallerName(false)), ...)
     end
     if os.clock() > wait_info + max_duration then
-        StopScript("Max duration reached", default(context, CallerName(false)), ...)
+        error("Max duration reached", default(context, CallerName(false)), ...)
     end
 end
 
@@ -980,7 +983,7 @@ function make_instance_args(ctype, args_table)
     if arg_array == instance then
         log_(LEVEL_CRITICAL, _array, args)
         log_(LEVEL_CRITICAL, _array, arg_array)
-        StopScript("Failed to make instance", CallerName(false), "type:", ctype, "args:", args)
+        error("Failed to make instance", CallerName(false), "type:", ctype, "args:", args)
     end
     return instance
 end
@@ -991,12 +994,12 @@ function deref_pointer(ptr, ctype)
     end
     local AsRef = get_generic_method(Unsafe, "AsRef", { ctype })
     if AsRef == nil or AsRef.Invoke == nil then
-        StopScript("Failed to get AsRef method", CallerName(false), "ctype:", ctype)
+        error("Failed to get AsRef method", CallerName(false), "ctype:", ctype)
     end
     local arg = luanet.make_array(Object, { ptr })
     local ref = AsRef:Invoke(nil, arg)
     if ref == arg then
-        StopScript("Failed to deref pointer", CallerName(false), "pointer:", ptr, "ctype:", ctype)
+        error("Failed to deref pointer", CallerName(false), "pointer:", ptr, "ctype:", ctype)
     end
     return ref
 end
@@ -1068,7 +1071,7 @@ end
 function get_method(type, method_name, binding)
     local method = type:GetMethod(method_name, make_binding_flags(binding))
     if method == nil then
-        StopScript("Method not found", CallerName(false), "type:", type, "method_name:", method_name)
+        error("Method not found", CallerName(false), "type:", type, "method_name:", method_name)
     end
     return method
 end
@@ -1076,7 +1079,7 @@ end
 function get_field(type, field_name, binding)
     local field = type:GetField(field_name, make_binding_flags(binding))
     if field == nil then
-        StopScript("Field not found", CallerName(false), "type:", type, "field_name:", field_name)
+        error("Field not found", CallerName(false), "type:", type, "field_name:", field_name)
     end
     return field
 end
@@ -1084,7 +1087,7 @@ end
 function get_property(type, property_name, binding)
     local property = type:GetProperty(property_name, make_binding_flags(binding))
     if property == nil then
-        StopScript("Property not found", CallerName(false), "type:", type, "property_name:", property_name)
+        error("Property not found", CallerName(false), "type:", type, "property_name:", property_name)
     end
     return property
 end
@@ -1220,7 +1223,7 @@ function get_generic_method(targetType, method_name, genericTypes)
             return m:MakeGenericMethod(genericArgsArr)
         end
     end
-    StopScript("No generic method found", CallerName(false), "No matching generic method found for", method_name, "with",
+    error("No generic method found", CallerName(false), "No matching generic method found for", method_name, "with",
         #genericTypes, "generic args")
 end
 
@@ -1244,7 +1247,7 @@ function get_method_overload(targetType, method_name, paramTypes)
             end
         end
     end
-    StopScript("No method overload found", CallerName(false), "No matching overload found for", method_name, "with",
+    error("No method overload found", CallerName(false), "No matching overload found for", method_name, "with",
         #paramTypes, "parameters")
 end
 --[[
@@ -1277,18 +1280,18 @@ function require_ipc(ipc_signature, result_type, arg_types)
     arg_types[#arg_types + 1] = default(result_type, 'System.Object')
     for i, v in pairs(arg_types) do
         if type(v) ~= 'string' then
-            StopScript("Bad argument", CallerName(false), "argument types shound be strings")
+            error("Bad argument", CallerName(false), "argument types shound be strings")
         end
         arg_types[i] = Type.GetType(v)
     end
     local method = get_generic_method(Svc.PluginInterface:GetType(), 'GetIpcSubscriber', arg_types)
     if method.Invoke == nil then
-        StopScript("GetIpcSubscriber not found", CallerName(false), "No IPC subscriber for", #arg_types, "arguments")
+        error("GetIpcSubscriber not found", CallerName(false), "No IPC subscriber for", #arg_types, "arguments")
     end
     local sig = luanet.make_array(Object, { ipc_signature })
     local subscriber = method:Invoke(Svc.PluginInterface, sig)
     if subscriber == nil then
-        StopScript("IPC not found", CallerName(false), "signature:", ipc_signature)
+        error("IPC not found", CallerName(false), "signature:", ipc_signature)
     end
     if result_type == nil then
         log_(LEVEL_DEBUG, _text, "loaded action IPC", ipc_signature)
@@ -1303,12 +1306,12 @@ function invoke_ipc(ipc_signature, ...)
     local function_subscriber = ipc_cache_functions[ipc_signature]
     local action_subscriber = ipc_cache_actions[ipc_signature]
     if function_subscriber == nil and action_subscriber == nil then
-        StopScript("IPC not ready", CallerName(false), "signature:", ipc_signature, "is not loaded")
+        error("IPC not ready", CallerName(false), "signature:", ipc_signature, "is not loaded")
     end
     if function_subscriber ~= nil then
         local result = function_subscriber:InvokeFunc(...)
         if result == function_subscriber then
-            StopScript("Function IPC failed", CallerName(false), "signature:", ipc_signature)
+            error("Function IPC failed", CallerName(false), "signature:", ipc_signature)
         end
         return result
     end
@@ -1316,7 +1319,7 @@ function invoke_ipc(ipc_signature, ...)
 
     local result = action_subscriber:InvokeAction(...)
     if result == action_subscriber then
-        StopScript("IPC failed", CallerName(false), "signature:", ipc_signature)
+        error("IPC failed", CallerName(false), "signature:", ipc_signature)
     end
 end
 
@@ -1473,7 +1476,7 @@ function warp_near_point(spot, radius, territory_id, fly)
     if Svc.ClientState.TerritoryType ~= territory_id then
         local a = nearest_aetherite(territory_id, spot)
         if a == nil then
-            StopScript("NoAetheryte", CallerName(false), "No aetherite found for", territory_id)
+            error("NoAetheryte", CallerName(false), "No aetherite found for", territory_id)
         end
         repeat
             Instances.Telepo:Teleport(a.AetherId, 0) -- IDK what the sub index is. if things break its probably that.
@@ -1548,7 +1551,7 @@ function jump_to_point(p, runup, retry)
         end
     until Vector3.Distance(Player.Entity.Position, start_pos) > runup or not IPC.vnavmesh.IsRunning()
     if not IPC.vnavmesh.IsRunning() then
-        StopScript("Failed to jump", CallerName(false), "to point", p)
+        error("Failed to jump", CallerName(false), "to point", p)
     end
     Actions.ExecuteGeneralAction(2)
     local retries = 0
@@ -1563,7 +1566,7 @@ function jump_to_point(p, runup, retry)
                     retries = retries + 1
                     Actions.ExecuteGeneralAction(2)
                 else
-                    StopScript("Stuck during jump", CallerName(false), "to point", p, "Landed at", Player.Entity
+                    error("Stuck during jump", CallerName(false), "to point", p, "Landed at", Player.Entity
                         .Position)
                 end
             end
@@ -1573,14 +1576,14 @@ function jump_to_point(p, runup, retry)
         end
     end
     if Vector3.Distance(Player.Entity.Position, p) > 3.0 then
-        StopScript("Missed jump", CallerName(false), "to point", p, "Landed at", Player.Entity.Position)
+        error("Missed jump", CallerName(false), "to point", p, "Landed at", Player.Entity.Position)
     end
     custom_path(false, { p })
     while IPC.vnavmesh.IsRunning() or Player.IsBusy do
         wait(0.1)
     end
     if Vector3.Distance(Player.Entity.Position, p) > 3.0 then
-        StopScript("Fell during reposition", CallerName(false), "to point", p, "Landed at", Player.Entity.Position)
+        error("Fell during reposition", CallerName(false), "to point", p, "Landed at", Player.Entity.Position)
     end
 end
 
@@ -1596,7 +1599,7 @@ function move_to_point(p)
             if stuck == nil then
                 stuck = os.clock()
             elseif os.clock() - stuck > .25 then
-                StopScript("Stuck during walk", CallerName(false), "to point", p, "Landed at", Player.Entity.Position)
+                error("Stuck during walk", CallerName(false), "to point", p, "Landed at", Player.Entity.Position)
             end
         else
             last_pos = Player.Entity.Position
@@ -1665,7 +1668,7 @@ function custom_path(fly, waypoints)
         elseif type(waypoint) == "userdata" then -- it better be a vector3
             vec_waypoints[i] = waypoint
         else
-            StopScript("Invalid waypoint type", CallerName(false), "Type:", type(waypoint))
+            error("Invalid waypoint type", CallerName(false), "Type:", type(waypoint))
         end
     end
     log_(LEVEL_DEBUG, _text, "Calling moveto")
@@ -1681,7 +1684,7 @@ function xyz_to_vec3(x, y, z)
         log_(LEVEL_VERBOSE, _text, "Converting coordinates to vector3", x, y, z)
         return Vector3(x, y, z)
     elseif y ~= nil or z ~= nil then
-        StopScript("Invalid coordinates for WalkTo", CallerName(false), "Must provide either vec3 or x,y,z", "x:", x,
+        error("Invalid coordinates for WalkTo", CallerName(false), "Must provide either vec3 or x,y,z", "x:", x,
             "y:", y, "z:", z)
     else
         log_(LEVEL_VERBOSE, _text, "Assuming provided value is already a vector3:", x)
@@ -1702,7 +1705,7 @@ function WalkTo(x, y, z, range)
         p = await(IPC.vnavmesh.Pathfind(Entity.Player.Position, pos, false))
     end
     if p.Count == 0 then
-        StopScript("No path found", CallerName(false), "x:", x, "y:", y, "z:", z, "range:", range)
+        error("No path found", CallerName(false), "x:", x, "y:", y, "z:", z, "range:", range)
     end
     log_(LEVEL_VERBOSE, _text, "Walking to", pos, "with range", range)
     if path_length(p) > SPRINT_THRESHOLD then
@@ -1785,7 +1788,7 @@ function RunVislandRoute(route_b64, wait_message)
 
     IPC.visland.StartRoute(route_b64, true)
     if not IPC.visland.IsRouteRunning() then
-        StopScript("Failed to start route", CallerName(), "Is visland enabled?")
+        error("Failed to start route", CallerName(), "Is visland enabled?")
     end
     repeat
         CheckTimeout(5 * 60, ti)
@@ -1840,7 +1843,7 @@ function get_closest_entity(name, critical)
     end
     local closest = raw_closest_thing(by_name(name), direct_distance)
     if critical and closest == nil then
-        StopScript("No entity found", CallerName(false), "Name:", name)
+        error("No entity found", CallerName(false), "Name:", name)
     end
     return EntityWrapper(closest)
 end
@@ -1849,7 +1852,7 @@ function closest_aethershard(critical)
     critical = default(critical, true)
     local closest = raw_closest_thing(is_aethershard, path_dist_to_obj(Player.CanFly))
     if critical and closest == nil then
-        StopScript("No aethershard found", CallerName(false))
+        error("No aethershard found", CallerName(false))
     end
     return closest
 end
@@ -2083,7 +2086,7 @@ end
 function get_item_info(item_name)
     local item_info = item_info_list[normalize_item_name(item_name)]
     if item_info == nil then
-        StopScript("No information for item", item_name)
+        error("No information for item", item_name)
     end
     return item_info
 end
@@ -2217,37 +2220,49 @@ function resolve_gearset_ids(number)
     }
 end
 
+-- dont preserve too long cause it can change, but its a little slow to generate
+_GEARSET_CACHE = {}
+_GEARSET_LAST_UPDATE = os.clock()
+
+
 function resolve_gearset_items(number)
-    local gearset_ids = resolve_gearset_ids(number)
-    if gearset_ids == nil then
-        return nil
+    if _GEARSET_LAST_UPDATE + 10 <= os.clock() then
+        _GEARSET_CACHE = {}
+        _GEARSET_LAST_UPDATE = os.clock()
     end
-    local items = {}
-    for slot, _ in pairs(gearset_ids) do
-        items[slot] = nil
-    end
-    for _, container in pairs(ALL_EQUIPMENT) do
-        local inv = Inventory.GetInventoryContainer(container)
-        for item in luanet.each(inv.Items) do
-            local itemId = item.ItemId
-            if item.IsHighQuality then
-                itemId = itemId + 1000000
-            end
-            for slot, gid in pairs(gearset_ids) do
-                if itemId == gid then
-                    gearset_ids[slot] = nil
-                    items[slot] = item
-                    break
+    if _GEARSET_CACHE[number] == nil then
+        local gearset_ids = resolve_gearset_ids(number)
+        if gearset_ids == nil then
+            return nil
+        end
+        local items = {}
+        for slot, _ in pairs(gearset_ids) do
+            items[slot] = nil
+        end
+        for _, container in pairs(ALL_EQUIPMENT) do
+            local inv = Inventory.GetInventoryContainer(container)
+            for item in luanet.each(inv.Items) do
+                local itemId = item.ItemId
+                if item.IsHighQuality then
+                    itemId = itemId + 1000000
+                end
+                for slot, gid in pairs(gearset_ids) do
+                    if itemId == gid then
+                        gearset_ids[slot] = nil
+                        items[slot] = item
+                        break
+                    end
                 end
             end
         end
-    end
-    for slot, gid in pairs(gearset_ids) do
-        if gid ~= nil then
-            log_(LEVEL_ERROR, _text, "Did not find item for slot", slot, "with id", gid, "in gearset", number)
+        for slot, gid in pairs(gearset_ids) do
+            if gid ~= nil then
+                log_(LEVEL_ERROR, _text, "Did not find item for slot", slot, "with id", gid, "in gearset", number)
+            end
         end
+        _GEARSET_CACHE[number] = items
     end
-    return items
+    return _GEARSET_CACHE[number]
 end
 
 function item_in_gearset(in_gearset)
@@ -2273,23 +2288,34 @@ end
 
 function restock_crystals(target)
     local need_restock = false
+    local can_restock = false
     for slot = 0, 17 do
         if Inventory.GetInventoryItemBySlot(InventoryType.Crystals, slot).Count < target then
             need_restock = true
-            break
+            if Inventory.GetInventoryItemBySlot(InventoryType.Crystals, slot).Count > 0 then
+                can_restock = true
+            end
         end
     end
+
     if not need_restock then
         return true
     end
-    --TODO: open inv or assume its open already?
-    -- probably assume the retainer is open but open the retainer inv here
+
+    if not can_restock then
+        return false
+    end
+
+    open_addon("InventoryRetainer", "SelectString", true, 0)
+
     local fully_stocked = true
     for slot = 0, 17 do
         if not __restock_crystals(slot, target) then
             fully_stocked = false
         end
     end
+
+    close_addon("InventoryRetainer")
     return fully_stocked
 end
 
@@ -2312,11 +2338,11 @@ end
 
 function move_partial_stack(src_inv, src_slot, count)
     if not any_addons_ready("InventoryRetainer") then
-        StopScript("RetainerInvNotOpen", CallerName(false), "Must have the retainer inventory panel open")
+        error("RetainerInvNotOpen", CallerName(false), "Must have the retainer inventory panel open")
     end
     local available = Inventory.GetInventoryItemBySlot(src_inv, src_slot).Count
     if available <= count then
-        StopScript("NotEnoughItems", CallerName(false), "Requested partial move", count, "but slot only has", available)
+        error("NotEnoughItems", CallerName(false), "Requested partial move", count, "but slot only has", available)
     end
     local menu_entry = "Retrieve Quantity"
     if list_contains({ InventoryType.Crystals, InventoryType.RetainerCrystals }, src_inv) then
@@ -2327,7 +2353,12 @@ function move_partial_stack(src_inv, src_slot, count)
     --- just ignore all those extra args, the context menu is completely invalid anyway...
     inst:OpenForItemSlot(src_inv, src_slot, 0, 0)
     --- danger zone: if the context menu goes away other than the callback in SelectInList the game will crash...
-    SelectInList(menu_entry)
+    if not SelectInList(menu_entry) then
+        close_addon("AddonContextSub")
+        close_addon("ContextMenu")
+        resume_pyes()
+        return
+    end
     --- perfectly safe :)
     wait_any_addons("InputNumeric")
     SafeCallback("InputNumeric", true, count)
@@ -2336,7 +2367,7 @@ end
 
 function move_items(source_inv, dest_inv, pred)
     if source_inv == nil or dest_inv == nil then
-        StopScript("Source and destination inventories must be provided")
+        error("Source and destination inventories must be provided")
     end
     if type(source_inv) ~= "table" then
         source_inv = { source_inv }
@@ -2351,11 +2382,11 @@ function move_items(source_inv, dest_inv, pred)
     while source_idx <= #source_inv do
         local sourceinv = Inventory.GetInventoryContainer(source_inv[source_idx])
         if sourceinv == nil then
-            StopScript("No inventory", CallerName(false), source_inv[source_idx])
+            error("No inventory", CallerName(false), source_inv[source_idx])
         else
             destinv = Inventory.GetInventoryContainer(dest_inv[dest_idx])
             if destinv == nil then
-                StopScript("No inventory", CallerName(false), dest_inv[dest_idx])
+                error("No inventory", CallerName(false), dest_inv[dest_idx])
             end
             for item in luanet.each(sourceinv.Items) do
                 if pred(item) then
@@ -2372,7 +2403,7 @@ function move_items(source_inv, dest_inv, pred)
                             if dest_idx <= #dest_inv then
                                 destinv = Inventory.GetInventoryContainer(dest_inv[dest_idx])
                                 if destinv == nil then
-                                    StopScript("No inventory", CallerName(false), dest_inv[dest_idx])
+                                    error("No inventory", CallerName(false), dest_inv[dest_idx])
                                 end
                             end
                         end
@@ -2421,7 +2452,7 @@ end
 
 function collect_reward_mail()
     if not Addons.GetAddon("LetterList").Ready then
-        StopScript("LetterList addon not ready")
+        error("LetterList addon not ready")
     end
     local count = tonumber(Addons.GetAddon("LetterList"):GetNode(1, 22, 23).Text:match("(.-)/"))
     repeat
@@ -2520,7 +2551,7 @@ end
 --]]
 function ice_setting(name, value)
     if type(name) ~= "string" then
-        StopScript("Bad setting name type", CallerName(false), "Settings names are strings, not", type(name), name)
+        error("Bad setting name type", CallerName(false), "Settings names are strings, not", type(name), name)
     end
     if type(value) == "boolean" then
         log_(LEVEL_DEBUG, _text, "Setting boolean", name, "to", value)
@@ -2529,7 +2560,7 @@ function ice_setting(name, value)
         log_(LEVEL_DEBUG, _text, "Setting number", name, "to", value)
         ice_change_number(name, value)
     else
-        StopScript("Bad setting type", CallerName(false), "Unexpected settings type", type(value), value)
+        error("Bad setting type", CallerName(false), "Unexpected settings type", type(value), value)
     end
 end
 
@@ -2697,7 +2728,7 @@ function report_research_safe()
     local need_swap = is_moon_tool_equiped()
     if need_swap then
         if not equip_some_other_job(initial_gs) then
-            StopScript("No Other Job", CallerName(false),
+            error("No Other Job", CallerName(false),
                 "Need to change gearset to hand in tool but no gearsets for other jobs were found")
         end
     end
@@ -2736,7 +2767,7 @@ end
 
 function start_fisher_mission(number)
     if ice_current_state() ~= "Idle" then
-        StopScript("Invalid State", CallerName(false), "ICE should be idle to initialize proplerly")
+        error("Invalid State", CallerName(false), "ICE should be idle to initialize proplerly")
     end
     set_missions(number)
 
@@ -2789,7 +2820,7 @@ function get_relic_exp(max)
     open_addon("WKSToolCustomize", "WKSHud", true, 15)
     local addon = Addons.GetAddon("WKSToolCustomize")
     if not addon.Exists or not addon.Ready then
-        StopScript("No WKS Tool", CallerName(false), "Failed to get the research screen")
+        error("No WKS Tool", CallerName(false), "Failed to get the research screen")
     end
     local completed = true
     local EXP_COUNT = 5
@@ -2817,7 +2848,7 @@ end
 function get_lunar_credits()
     local addon = Addons.GetAddon("WKSHud")
     if not addon.Exists or not addon.Ready then
-        StopScript("No WKS Hud", CallerName(false), "Failed to get the HUD")
+        error("No WKS Hud", CallerName(false), "Failed to get the HUD")
     end
 
     return tonumber(addon:GetAtkValue(6).ValueString)
@@ -2857,7 +2888,7 @@ function fish_relic(max)
                 elseif t == 3 or t == 4 or t == 5 then
                     start_fisher_mission(988)
                 else
-                    StopScript("Bad State", CallerName(false), "Unexpected research type", t)
+                    error("Bad State", CallerName(false), "Unexpected research type", t)
                 end
                 break
             end
