@@ -234,7 +234,7 @@ function open_addon(addon, base_addon, ...)
     wait_any_addons(base_addon)
     local ti = ResetTimeout()
     while not IsAddonReady(addon) do
-        CheckTimeout(1, ti, CallerName(false), "Opening addon", addon)
+        CheckTimeout(3, ti, CallerName(false), "Opening addon", addon)
         SafeCallback(base_addon, ...)
         wait(0.1)
     end
@@ -243,7 +243,7 @@ end
 function confirm_addon(addon, ...)
     local ti = ResetTimeout()
     while IsAddonReady(addon) do
-        CheckTimeout(1, ti, CallerName(false), "Confirming addon", addon)
+        CheckTimeout(3, ti, CallerName(false), "Confirming addon", addon)
         SafeCallback(addon, ...)
         wait(0.1)
     end
@@ -329,10 +329,11 @@ end
 
 function open_retainer_bell()
     OpenShop("Summoning Bell", { "RetainerList", "SelectString", "RetainerGrid", "RetainerTaskAsk", "Bank" })
-    if IPC.AutoRetainer.AreAnyRetainersAvailableForCurrentChara() then
-        repeat
-            wait(1)
-        until not IPC.AutoRetainer.IsBusy()
+    while IPC.AutoRetainer.AreAnyRetainersAvailableForCurrentChara() do
+        wait(1)
+    end
+    while IPC.AutoRetainer.IsBusy() do
+        wait(1)
     end
     wait_any_addons("RetainerList")
 end
@@ -454,16 +455,17 @@ end
 
 function is_busy()
     return Player.IsBusy or GetCharacterCondition(6) or GetCharacterCondition(26) or GetCharacterCondition(27) or
-        GetCharacterCondition(43) or
+        GetCharacterCondition(43) or GetCharacterCondition(50) or
         GetCharacterCondition(45) or GetCharacterCondition(51) or GetCharacterCondition(32) or
         not (GetCharacterCondition(1) or GetCharacterCondition(4)) or
         (not IPC.vnavmesh.IsReady()) or IPC.vnavmesh.PathfindInProgress() or IPC.vnavmesh.IsRunning()
 end
 
-function wait_ready(max_wait, n_ready, stationary)
+function wait_ready(max_wait, seconds_ready, stationary, interval)
     stationary = default(stationary, true)
-    n_ready = default(n_ready, 5)
-    local ready_count = 0
+    seconds_ready = default(seconds_ready, 5)
+    interval = default(interval, 1)
+    local ready_time = os.clock()
     local ti = nil
     local p = Entity.Player.Position
     if max_wait ~= nil then
@@ -471,18 +473,16 @@ function wait_ready(max_wait, n_ready, stationary)
     end
     repeat
         if ti ~= nil then
-            CheckTimeout(max_wait, ti, CallerName(), "wait_ready timed out with ready count", ready_count, "and target",
-                n_ready)
+            CheckTimeout(max_wait, ti, CallerName(), "wait_ready timed out with ready time", os.clock() - ready_time,
+                "and target", seconds_ready)
         end
-        wait(1)
+        wait(interval)
         ---@diagnostic disable-next-line: undefined-field  Vector3.Distance exists....
-        if is_busy() or (stationary and Vector3.Distance(p, Entity.Player.Position) > 1) then
+        if is_busy() or (stationary and Vector3.Distance(p, Entity.Player.Position) > interval) then
             p = Entity.Player.Position
-            ready_count = 0
-        else
-            ready_count = ready_count + 1
+            ready_time = os.clock()
         end
-    until ready_count >= n_ready
+    until os.clock() - ready_time >= seconds_ready
 end
 
 function luminia_row_checked(table, id)
@@ -906,6 +906,17 @@ function AlertTimeout(max_duration, wait_info, context, ...)
         return true
     end
     return false
+end
+
+-- delay for longer tasks to avoid complete game freezes
+local _LAST_FRAME_TIME = os.clock()
+local _MIN_FPS = 10.0
+function long_task_delay(min_fps)
+    min_fps = default(min_fps, _MIN_FPS)
+    if os.clock() - _LAST_FRAME_TIME > 1.0 / min_fps then
+        wait(0)
+        _LAST_FRAME_TIME = os.clock()
+    end
 end
 --[[
 ================================================================================
@@ -1370,10 +1381,12 @@ function smart_path(place_name, x, y, z)
     local shard_distance = math.maxinteger
     for _, info in pairs(nets) do
         if info.TerritoryName == place_name then
-            local dist = Vector3.Distance(info.Position, goal_point)
-            if dist < shard_distance then
-                nearest_shard = info
-                shard_distance = dist
+            if not info.Invisible then
+                local dist = Vector3.Distance(info.Position, goal_point)
+                if dist < shard_distance then
+                    nearest_shard = info
+                    shard_distance = dist
+                end
             end
         end
     end
@@ -1483,15 +1496,11 @@ local aether_info = nil
 local net_info = nil
 function load_aether_info()
     if aether_info == nil or net_info == nil then
-        local t = os.clock()
         aether_info = {}
         net_info = {}
         local sheet = Excel.GetSheet("Aetheryte")
         for r = 0, sheet.Count - 1 do
-            if os.clock() - t > 1.0 / 10.0 then
-                wait(0)
-                t = os.clock()
-            end
+            long_task_delay()
             local row = sheet[r]
             if Instances.Telepo:IsAetheryteUnlocked(r) then
                 if row.IsAetheryte then
@@ -1681,8 +1690,10 @@ function move_to_point(p)
     end
 end
 
-function walk_path(path, fly, range, stop_if_stuck, ref_point)
+function walk_path(path, fly, range, stop_if_stuck, ref_point, max_stuck_time)
+    local stuck_start = os.clock()
     running_vnavmesh = true
+    max_stuck_time = default(max_stuck_time, 1)
     stop_if_stuck = default(stop_if_stuck, false)
     ref_point = default(ref_point, path[path.Count - 1])
     local ti = ResetTimeout()
@@ -1698,11 +1709,16 @@ function walk_path(path, fly, range, stop_if_stuck, ref_point)
             IPC.vnavmesh.Stop()
         end
         if not fly or GetCharacterCondition(4) then
+            local now = os.clock()
             if stop_if_stuck and Vector3.Distance(last_pos, cur_pos) < stop_if_stuck then
-                log_(LEVEL_ERROR, _text, "Antistuck triggered!")
-                IPC.vnavmesh.Stop()
+                if stuck_start + max_stuck_time < now then
+                    log_(LEVEL_ERROR, _text, "Antistuck triggered!")
+                    IPC.vnavmesh.Stop()
+                end
+            else
+                stuck_start = now
+                last_pos = cur_pos
             end
-            last_pos = cur_pos
         end
         wait(0.1)
     end
@@ -2268,6 +2284,11 @@ end
 RaptureGearsetModule_GearsetItemIndex = load_type(
     "FFXIVClientStructs.FFXIV.Client.UI.Misc.RaptureGearsetModule+GearsetItemIndex")
 
+function current_gearset_index()
+    local RaptureGearsetModule = cs_instance("FFXIVClientStructs.FFXIV.Client.UI.Misc.RaptureGearsetModule")
+    return RaptureGearsetModule.CurrentGearsetIndex
+end
+
 function resolve_gearset_ids(number)
     RaptureGearsetModule = cs_instance("FFXIVClientStructs.FFXIV.Client.UI.Misc.RaptureGearsetModule")
     if not RaptureGearsetModule:IsValidGearset(number) then
@@ -2328,6 +2349,7 @@ function resolve_gearset_items(number)
         for _, container in pairs(ALL_EQUIPMENT) do
             local inv = Inventory.GetInventoryContainer(container)
             for item in luanet.each(inv.Items) do
+                long_task_delay()
                 local itemId = item.ItemId
                 if item.IsHighQuality then
                     itemId = itemId + 1000000
@@ -2369,6 +2391,50 @@ function item_in_gearset(in_gearset)
             end
         end
         return not in_gearset
+    end
+end
+
+function is_item_job(job)
+    return function(item)
+        local cat = luminia_row_checked("item", item.ItemId).ClassJobCategory
+        if cat.RowId == 0 then
+            return nil
+        end
+        return cat[job]
+    end
+end
+
+function is_item_equip_slot(slot)
+    return function(item)
+        local cat = luminia_row_checked("item", item.ItemId).EquipSlotCategory
+        if cat.RowId == 0 then
+            return nil
+        end
+        return cat[slot]
+    end
+end
+
+function pred_all(...)
+    local pred_list = table.pack(...)
+    return function(item)
+        for i = 1, pred_list.n do
+            if not pred_list[i](item) then
+                return false
+            end
+        end
+        return true
+    end
+end
+
+function pred_any(...)
+    local pred_list = table.pack(...)
+    return function(item)
+        for i = 1, pred_list.n do
+            if pred_list[i](item) then
+                return true
+            end
+        end
+        return false
     end
 end
 
@@ -2451,7 +2517,8 @@ function move_partial_stack(src_inv, src_slot, count)
     resume_pyes()
 end
 
-function move_items(source_inv, dest_inv, pred)
+function move_items(source_inv, dest_inv, pred, count)
+    count = default(count, -1)
     if source_inv == nil or dest_inv == nil then
         error("Source and destination inventories must be provided")
     end
@@ -2475,14 +2542,20 @@ function move_items(source_inv, dest_inv, pred)
                 error("No inventory", CallerName(false), dest_inv[dest_idx])
             end
             for item in luanet.each(sourceinv.Items) do
+                long_task_delay()
                 if pred(item) then
                     local need_move = true
                     while dest_idx <= #dest_inv and need_move do
                         if destinv.FreeSlots > 0 then
                             log("Moving", item.ItemId, "from", source_inv[source_idx], "to", dest_inv[dest_idx])
                             item:MoveItemSlot(dest_inv[dest_idx])
+                            if count > 0 then
+                                count = count - 1
+                                if count == 0 then
+                                    return true -- moved all requested items
+                                end
+                            end
                             need_move = false
-                            wait(0)
                         else
                             log_(LEVEL_INFO, _text, "No space to move item to", dest_inv[dest_idx])
                             dest_idx = dest_idx + 1
@@ -2503,6 +2576,23 @@ function move_items(source_inv, dest_inv, pred)
         source_idx = source_idx + 1
     end
     return true -- all items if any were able to be moved
+end
+
+function make_armory_space(amount, armory_slots, allowed_move)
+    armory_slots = default(armory_slots, ALL_ARMORY)
+    local success = true
+    for _, slot in pairs(armory_slots) do
+        local inv = Inventory.GetInventoryContainer(slot)
+        local needed = amount - inv.FreeSlots
+        if needed > 0 then
+            log_(LEVEL_INFO, _text, "Need to move", needed, "items out of armory slot", slot)
+            if not move_items(slot, ALL_INVENTORY, allowed_move, needed) then
+                success = false
+                log_(LEVEL_ERROR, _text, "Not enough space to move items out of armory slot", slot)
+            end
+        end
+    end
+    return success
 end
 
 function open_map(map_name, partial_ok)
@@ -2540,21 +2630,28 @@ function collect_reward_mail()
     if not Addons.GetAddon("LetterList").Ready then
         error("LetterList addon not ready")
     end
-    local count = tonumber(Addons.GetAddon("LetterList"):GetNode(1, 22, 23).Text:match("(.-)/"))
+    wait(1)
+    local count = tonumber(Addons.GetAddon("LetterList"):GetNode(1, 22, 23).Text:match("(.-)/20"))
+    log_(LEVEL_INFO, _text, "Starting to collect reward mail, count:", count)
+    if count == 0 or count == nil then
+        log_(LEVEL_INFO, _text, "Error or no mail")
+        return
+    end
     repeat
         open_addon("LetterViewer", "LetterList", true, 0, 0)
         SafeCallback("LetterViewer", true, 1)
-        repeat wait(0) until Addons.GetAddon("LetterViewer"):GetNode(1, 32, 2, 3).IsVisible
-        repeat wait(0) until not Addons.GetAddon("LetterViewer"):GetNode(1, 32, 2, 3).IsVisible
+        repeat wait(.1) until Addons.GetAddon("LetterViewer"):GetNode(1, 32, 2, 3).IsVisible
+        repeat wait(.1) until not Addons.GetAddon("LetterViewer"):GetNode(1, 32, 2, 3).IsVisible
         wait(.1)
         SafeCallback("LetterViewer", true, 2)
         wait_any_addons("SelectYesno")
         SafeCallback("SelectYesno", true, 0)
         local l = count
         repeat
-            wait(0)
-            count = tonumber(Addons.GetAddon("LetterList"):GetNode(1, 22, 23).Text:match("(.-)/"))
+            wait(.1)
+            count = tonumber(Addons.GetAddon("LetterList"):GetNode(1, 22, 23).Text:match("(.-)/20"))
         until l ~= count
+        log_(LEVEL_INFO, _text, "Collected reward mail, remaining count:", count)
         wait(.1)
     until count == 0
     close_addon("LetterList")

@@ -219,7 +219,7 @@ function open_addon(addon, base_addon, ...)
     wait_any_addons(base_addon)
     local ti = ResetTimeout()
     while not IsAddonReady(addon) do
-        CheckTimeout(1, ti, CallerName(false), "Opening addon", addon)
+        CheckTimeout(3, ti, CallerName(false), "Opening addon", addon)
         SafeCallback(base_addon, ...)
         wait(0.1)
     end
@@ -228,7 +228,7 @@ end
 function confirm_addon(addon, ...)
     local ti = ResetTimeout()
     while IsAddonReady(addon) do
-        CheckTimeout(1, ti, CallerName(false), "Confirming addon", addon)
+        CheckTimeout(3, ti, CallerName(false), "Confirming addon", addon)
         SafeCallback(addon, ...)
         wait(0.1)
     end
@@ -314,10 +314,11 @@ end
 
 function open_retainer_bell()
     OpenShop("Summoning Bell", { "RetainerList", "SelectString", "RetainerGrid", "RetainerTaskAsk", "Bank" })
-    if IPC.AutoRetainer.AreAnyRetainersAvailableForCurrentChara() then
-        repeat
-            wait(1)
-        until not IPC.AutoRetainer.IsBusy()
+    while IPC.AutoRetainer.AreAnyRetainersAvailableForCurrentChara() do
+        wait(1)
+    end
+    while IPC.AutoRetainer.IsBusy() do
+        wait(1)
     end
     wait_any_addons("RetainerList")
 end
@@ -439,16 +440,17 @@ end
 
 function is_busy()
     return Player.IsBusy or GetCharacterCondition(6) or GetCharacterCondition(26) or GetCharacterCondition(27) or
-        GetCharacterCondition(43) or
+        GetCharacterCondition(43) or GetCharacterCondition(50) or
         GetCharacterCondition(45) or GetCharacterCondition(51) or GetCharacterCondition(32) or
         not (GetCharacterCondition(1) or GetCharacterCondition(4)) or
         (not IPC.vnavmesh.IsReady()) or IPC.vnavmesh.PathfindInProgress() or IPC.vnavmesh.IsRunning()
 end
 
-function wait_ready(max_wait, n_ready, stationary)
+function wait_ready(max_wait, seconds_ready, stationary, interval)
     stationary = default(stationary, true)
-    n_ready = default(n_ready, 5)
-    local ready_count = 0
+    seconds_ready = default(seconds_ready, 5)
+    interval = default(interval, 1)
+    local ready_time = os.clock()
     local ti = nil
     local p = Entity.Player.Position
     if max_wait ~= nil then
@@ -456,18 +458,16 @@ function wait_ready(max_wait, n_ready, stationary)
     end
     repeat
         if ti ~= nil then
-            CheckTimeout(max_wait, ti, CallerName(), "wait_ready timed out with ready count", ready_count, "and target",
-                n_ready)
+            CheckTimeout(max_wait, ti, CallerName(), "wait_ready timed out with ready time", os.clock() - ready_time,
+                "and target", seconds_ready)
         end
-        wait(1)
+        wait(interval)
         ---@diagnostic disable-next-line: undefined-field  Vector3.Distance exists....
-        if is_busy() or (stationary and Vector3.Distance(p, Entity.Player.Position) > 1) then
+        if is_busy() or (stationary and Vector3.Distance(p, Entity.Player.Position) > interval) then
             p = Entity.Player.Position
-            ready_count = 0
-        else
-            ready_count = ready_count + 1
+            ready_time = os.clock()
         end
-    until ready_count >= n_ready
+    until os.clock() - ready_time >= seconds_ready
 end
 
 function luminia_row_checked(table, id)
@@ -891,6 +891,17 @@ function AlertTimeout(max_duration, wait_info, context, ...)
         return true
     end
     return false
+end
+
+-- delay for longer tasks to avoid complete game freezes
+local _LAST_FRAME_TIME = os.clock()
+local _MIN_FPS = 10.0
+function long_task_delay(min_fps)
+    min_fps = default(min_fps, _MIN_FPS)
+    if os.clock() - _LAST_FRAME_TIME > 1.0 / min_fps then
+        wait(0)
+        _LAST_FRAME_TIME = os.clock()
+    end
 end
 --[[
 ================================================================================
@@ -1355,10 +1366,12 @@ function smart_path(place_name, x, y, z)
     local shard_distance = math.maxinteger
     for _, info in pairs(nets) do
         if info.TerritoryName == place_name then
-            local dist = Vector3.Distance(info.Position, goal_point)
-            if dist < shard_distance then
-                nearest_shard = info
-                shard_distance = dist
+            if not info.Invisible then
+                local dist = Vector3.Distance(info.Position, goal_point)
+                if dist < shard_distance then
+                    nearest_shard = info
+                    shard_distance = dist
+                end
             end
         end
     end
@@ -1468,15 +1481,11 @@ local aether_info = nil
 local net_info = nil
 function load_aether_info()
     if aether_info == nil or net_info == nil then
-        local t = os.clock()
         aether_info = {}
         net_info = {}
         local sheet = Excel.GetSheet("Aetheryte")
         for r = 0, sheet.Count - 1 do
-            if os.clock() - t > 1.0 / 10.0 then
-                wait(0)
-                t = os.clock()
-            end
+            long_task_delay()
             local row = sheet[r]
             if Instances.Telepo:IsAetheryteUnlocked(r) then
                 if row.IsAetheryte then
@@ -1666,8 +1675,10 @@ function move_to_point(p)
     end
 end
 
-function walk_path(path, fly, range, stop_if_stuck, ref_point)
+function walk_path(path, fly, range, stop_if_stuck, ref_point, max_stuck_time)
+    local stuck_start = os.clock()
     running_vnavmesh = true
+    max_stuck_time = default(max_stuck_time, 1)
     stop_if_stuck = default(stop_if_stuck, false)
     ref_point = default(ref_point, path[path.Count - 1])
     local ti = ResetTimeout()
@@ -1683,11 +1694,16 @@ function walk_path(path, fly, range, stop_if_stuck, ref_point)
             IPC.vnavmesh.Stop()
         end
         if not fly or GetCharacterCondition(4) then
+            local now = os.clock()
             if stop_if_stuck and Vector3.Distance(last_pos, cur_pos) < stop_if_stuck then
-                log_(LEVEL_ERROR, _text, "Antistuck triggered!")
-                IPC.vnavmesh.Stop()
+                if stuck_start + max_stuck_time < now then
+                    log_(LEVEL_ERROR, _text, "Antistuck triggered!")
+                    IPC.vnavmesh.Stop()
+                end
+            else
+                stuck_start = now
+                last_pos = cur_pos
             end
-            last_pos = cur_pos
         end
         wait(0.1)
     end
