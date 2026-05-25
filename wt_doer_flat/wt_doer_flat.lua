@@ -758,7 +758,11 @@ function CallerName(string)
         return "(unknown caller)"
     end
     string = default(string, true)
-    return debug_info_tostring(debug.getinfo(3), string)
+    local info = debug.getinfo(3)
+    if info == nil then
+        return "(unknown caller)"
+    end
+    return debug_info_tostring(info, string)
 end
 
 function FunctionInfo(string)
@@ -766,7 +770,11 @@ function FunctionInfo(string)
         return "(unknown function)"
     end
     string = default(string, true)
-    return debug_info_tostring(debug.getinfo(2), string)
+    local info = debug.getinfo(2)
+    if info == nil then
+        return "(unknown function)"
+    end
+    return debug_info_tostring(info, string)
 end
 
 function debug_info_tostring(debug_info, always_string)
@@ -1022,6 +1030,39 @@ end
 function assembly_name(inputstr)
     for str in string.gmatch(inputstr, "[^%.]+") do
         return str
+    end
+end
+
+function _field(o, field, ...)
+    if field == nil then
+        return o
+    end
+    local t = o:GetType()
+    local f = get_field(t, field, { private = true, static = true }, false)
+    if f == nil then
+        f = get_property(t, field, { private = true, static = true }, false)
+        if f == nil then
+            error("field or property not found", CallerName(false), o, field)
+        end
+    end
+    local res = f:GetValue(o)
+    if res == o then
+        error("could not get value", CallerName(false), o, field)
+    end
+    return _field(res, ...)
+end
+
+function get_plugin_instance(plugin_name, required)
+    required = default(required, true)
+    local DalamudReflector = load_type("ECommons.Reflection.DalamudReflector")
+    local pluginManager = DalamudReflector.GetPluginManager()
+    for plugin in luanet.each(pluginManager.InstalledPlugins) do
+        if plugin.Name == plugin_name then
+            return _field(plugin, "instance")
+        end
+    end
+    if required then
+        error("Plugin not found", CallerName(false), plugin_name)
     end
 end
 
@@ -2421,13 +2462,20 @@ function is_item_job(job)
     end
 end
 
+function max_item_level(max_level)
+    return function(item)
+        local equip_level = luminia_row_checked("item", item.ItemId).LevelEquip
+        return equip_level <= max_level
+    end
+end
+
 function is_item_equip_slot(slot)
     return function(item)
         local cat = luminia_row_checked("item", item.ItemId).EquipSlotCategory
         if cat.RowId == 0 then
             return nil
         end
-        return cat[slot]
+        return cat[slot] == 1
     end
 end
 
@@ -2435,7 +2483,10 @@ function pred_all(...)
     local pred_list = table.pack(...)
     return function(item)
         for i = 1, pred_list.n do
-            if not pred_list[i](item) then
+            local p = pred_list[i]
+            local r = p(item)
+            log_(LEVEL_VERBOSE, _text, "Checking predicate number", i, "result", r)
+            if not r then
                 return false
             end
         end
