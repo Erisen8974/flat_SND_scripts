@@ -121,6 +121,8 @@ pcall(require, 'private/char_info')
 
 
 SCRIPT_TAG = "[EriSND]"
+MINUTES = 60
+HOURS = 60 * MINUTES
 
 -----------------------
 -- General Utilities --
@@ -462,10 +464,16 @@ function wait_ready(max_wait, seconds_ready, stationary, interval)
                 "and target", seconds_ready)
         end
         wait(interval)
-        ---@diagnostic disable-next-line: undefined-field  Vector3.Distance exists....
-        if is_busy() or (stationary and Vector3.Distance(p, Entity.Player.Position) > interval) then
-            p = Entity.Player.Position
-            ready_time = os.clock()
+        local player = Entity.Player
+        if player ~= nil then
+            local position = player.Position
+            if position ~= nil then
+                ---@diagnostic disable-next-line: undefined-field  Vector3.Distance exists....
+                if is_busy() or (stationary and Vector3.Distance(p, position) > interval) then
+                    p = position
+                    ready_time = os.clock()
+                end
+            end
         end
     until os.clock() - ready_time >= seconds_ready
 end
@@ -1038,12 +1046,22 @@ function _field(o, field, ...)
 end
 
 function get_plugin_instance(plugin_name, required)
+    local plugin = get_plugin_raw(plugin_name, required, true)
+    if plugin ~= nil then
+        return _field(plugin, "instance")
+    end
+end
+
+function get_plugin_raw(plugin_name, required, need_loaded)
+    need_loaded = default(need_loaded, true)
     required = default(required, true)
     local DalamudReflector = load_type("ECommons.Reflection.DalamudReflector")
     local pluginManager = DalamudReflector.GetPluginManager()
     for plugin in luanet.each(pluginManager.InstalledPlugins) do
         if plugin.Name == plugin_name then
-            return _field(plugin, "instance")
+            if plugin.IsLoaded or not need_loaded then
+                return plugin
+            end
         end
     end
     if required then
