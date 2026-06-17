@@ -221,6 +221,7 @@ function wait_message(after, timeout, ...)
     local found = false
 
     timeout = default(timeout, 10)
+    wait_any_addons("ChatLogPanel_3")
     repeat
         CheckTimeout(timeout, ti, CallerName(false), "Waiting for message '" .. after .. "' followed by", ...)
         wait(.1)
@@ -454,9 +455,11 @@ function wait_ready(max_wait, seconds_ready, stationary, interval)
         local position = player.Position
         if position ~= nil then
             p = position
+        else
+            log_(LEVEL_ERROR, _text, "Player.Entity.Position is nil - init")
         end
     else
-        log_(LEVEL_ERROR, _text, "Player.Entity is nil")
+        log_(LEVEL_ERROR, _text, "Player.Entity is nil - init")
     end
     if max_wait ~= nil then
         ti = ResetTimeout()
@@ -474,15 +477,24 @@ function wait_ready(max_wait, seconds_ready, stationary, interval)
                 if p ~= nil then
                     ---@diagnostic disable-next-line: undefined-field  Vector3.Distance exists....
                     if is_busy() or (stationary and Vector3.Distance(p, position) > interval) then
+                        log_(LEVEL_DEBUG, _text, "not ready resetting clock")
                         p = position
                         ready_time = os.clock()
+                    else
+                        log_(LEVEL_DEBUG, _text, "ready tick", os.clock() - ready_time, "target", seconds_ready)
                     end
                 else
                     p = position
+                    ready_time = os.clock()
+                    log_(LEVEL_DEBUG, _text, "Initial position was nil, setting")
                 end
             else
-                log_(LEVEL_ERROR, _text, "Player.Entity is nil")
+                ready_time = os.clock()
+                log_(LEVEL_ERROR, _text, "Player.Entity.Position is nil")
             end
+        else
+            ready_time = os.clock()
+            log_(LEVEL_ERROR, _text, "Player.Entity is nil")
         end
     until os.clock() - ready_time >= seconds_ready
 end
@@ -1918,7 +1930,7 @@ function ZoneTransition()
         wait(0.1)
     until IsPlayerAvailable()
     log_(LEVEL_DEBUG, _text, "Teleport done")
-    wait_ready(30, 2)
+    wait_ready(30, .5, true, .1)
     log_(LEVEL_DEBUG, _text, "Ready!")
 end
 
@@ -2037,16 +2049,16 @@ end
 
 function path_distance_to(vec3, fly)
     fly = default(fly, false)
-    path = await(IPC.vnavmesh.Pathfind(Entity.Player.Position, vec3, fly))
+    path = await(IPC.vnavmesh.Pathfind(Player.Entity.Position, vec3, fly))
     if path.Count == 0 then -- if theres no path use the cartesian distance
-        return Vector3.Distance(Entity.Player.Position, vec3)
+        return Vector3.Distance(Player.Entity.Position, vec3)
     end
     return path_length(path)
 end
 
 function path_length(path)
     local dist = 0
-    local prev_point = Entity.Player.Position
+    local prev_point = Player.Entity.Position
     for point in luanet.each(path) do
         dist = dist + Vector3.Distance(prev_point, point)
         prev_point = point
@@ -2061,7 +2073,7 @@ function path_dist_to_obj(fly)
 end
 
 function direct_distance(obj)
-    return Vector3.Distance(Entity.Player.Position, obj.Position)
+    return Vector3.Distance(Player.Entity.Position, obj.Position)
 end
 
 function is_alive(obj)
