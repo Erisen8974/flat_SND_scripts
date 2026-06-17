@@ -86,16 +86,16 @@ function GetCharacterCondition(cond)
 end
 
 function GetDistanceToPoint(x, y, z)
-    if Entity == nil then
+    if Player == nil then
         return nil
     end
-    if Entity.Player == nil then
+    if Player.Entity == nil then
         return nil
     end
-    if Entity.Player.Position == nil then
+    if Player.Entity.Position == nil then
         return nil
     end
-    return Vector3.Distance(Entity.Player.Position, Vector3(x, y, z))
+    return Vector3.Distance(Player.Entity.Position, Vector3(x, y, z))
 end
 
 function IsPlayerAvailable()
@@ -430,8 +430,7 @@ function char_homeworld(char)
     return char_info.Homeworld
 end
 
-function change_character(char, world, max_time)
-    max_time = default(max_time, 10 * 60)
+function change_character(char, world)
     local ti = ResetTimeout()
     char = char_canonical_name(char)
     world = title_case(default(world, char_homeworld(char)))
@@ -445,27 +444,7 @@ function change_character(char, world, max_time)
         return
     end
 
-    running_lifestream = true
-    IPC.Lifestream.ExecuteCommand(target)
-
-    repeat
-        CheckTimeout(max_time, ti, "ZoneTransition", "Waiting for lifestream to start")
-        wait(.1)
-    until IPC.Lifestream.IsBusy()
-
-    repeat
-        CheckTimeout(max_time, ti, "ZoneTransition", "Waiting for lifestream to finish")
-        wait(10)
-    until not IPC.Lifestream.IsBusy()
-    log_(LEVEL_DEBUG, _text, "Lifestream done")
-
-    repeat
-        CheckTimeout(max_time, ti, "ZoneTransition", "Waiting for zone transition to end")
-        wait(5)
-    until IsPlayerAvailable()
-
-    log_(LEVEL_DEBUG, _text, "relog done")
-    wait_ready(max_time, 2)
+    lifestream_command_blocking(target)
     log_(LEVEL_DEBUG, _text, "Ready!")
 end
 
@@ -483,7 +462,16 @@ function wait_ready(max_wait, seconds_ready, stationary, interval)
     interval = default(interval, 1)
     local ready_time = os.clock()
     local ti = nil
-    local p = Entity.Player.Position
+    local p = nil
+    local player = Player.Entity
+    if player ~= nil then
+        local position = player.Position
+        if position ~= nil then
+            p = position
+        end
+    else
+        log_(LEVEL_ERROR, _text, "Player.Entity is nil")
+    end
     if max_wait ~= nil then
         ti = ResetTimeout()
     end
@@ -493,15 +481,21 @@ function wait_ready(max_wait, seconds_ready, stationary, interval)
                 "and target", seconds_ready)
         end
         wait(interval)
-        local player = Entity.Player
+        local player = Player.Entity
         if player ~= nil then
             local position = player.Position
             if position ~= nil then
-                ---@diagnostic disable-next-line: undefined-field  Vector3.Distance exists....
-                if is_busy() or (stationary and Vector3.Distance(p, position) > interval) then
+                if p ~= nil then
+                    ---@diagnostic disable-next-line: undefined-field  Vector3.Distance exists....
+                    if is_busy() or (stationary and Vector3.Distance(p, position) > interval) then
+                        p = position
+                        ready_time = os.clock()
+                    end
+                else
                     p = position
-                    ready_time = os.clock()
                 end
+            else
+                log_(LEVEL_ERROR, _text, "Player.Entity is nil")
             end
         end
     until os.clock() - ready_time >= seconds_ready
@@ -1788,7 +1782,7 @@ function walk_path(path, fly, range, stop_if_stuck, ref_point, max_stuck_time)
     while (IPC.vnavmesh.IsRunning() or IPC.vnavmesh.PathfindInProgress()) do
         CheckTimeout(60, ti, CallerName(false), "Waiting for pathfind")
         local cur_pos = Player.Entity.Position
-        if range ~= nil and Vector3.Distance(Entity.Player.Position, ref_point) <= range then
+        if range ~= nil and Vector3.Distance(cur_pos, ref_point) <= range then
             IPC.vnavmesh.Stop()
         end
         if not fly or GetCharacterCondition(4) then
@@ -1874,7 +1868,7 @@ function WalkTo(x, y, z, range)
         p = pathfind_with_tolerance(pos, false, range)
     else
         log_(LEVEL_VERBOSE, _text, "Finding path to", pos)
-        p = await(IPC.vnavmesh.Pathfind(Entity.Player.Position, pos, false))
+        p = await(IPC.vnavmesh.Pathfind(Player.Entity.Position, pos, false))
     end
     if p.Count == 0 then
         error("No path found", CallerName(false), "x:", x, "y:", y, "z:", z, "range:", range)
@@ -1891,7 +1885,7 @@ function WalkTo(x, y, z, range)
 
     while (IPC.vnavmesh.IsRunning() or IPC.vnavmesh.PathfindInProgress()) do
         CheckTimeout(30, ti, CallerName(false), "Waiting for pathfind")
-        if range ~= nil and Vector3.Distance(Entity.Player.Position, pos) <= range then
+        if range ~= nil and Vector3.Distance(Player.Entity.Position, pos) <= range then
             log_(LEVEL_VERBOSE, _text, "Stopping path because within range", range, "of target")
             IPC.vnavmesh.Stop()
         end
@@ -1911,7 +1905,7 @@ function pathfind_with_tolerance(vec3, fly, tolerance)
             'System.Single'
         }
     )
-    return await(invoke_ipc('vnavmesh.Nav.PathfindWithTolerance', Entity.Player.Position, vec3, fly, tolerance))
+    return await(invoke_ipc('vnavmesh.Nav.PathfindWithTolerance', Player.Entity.Position, vec3, fly, tolerance))
 end
 
 function ZoneTransition()
