@@ -2,7 +2,8 @@ metadata/moon_man.lua
 moon_man.lua
 utils.lua
 legacy_interface.lua
-luasharp.lua
+extra_ipcs.lua
 hard_ipc.lua
+luasharp.lua
 path_helpers.lua
 inventory_buddy.lua

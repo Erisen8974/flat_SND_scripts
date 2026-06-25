@@ -2,7 +2,8 @@ metadata/wt_doer.lua
 wt_doer.lua
 utils.lua
 legacy_interface.lua
-path_helpers.lua
-luasharp.lua
+extra_ipcs.lua
 hard_ipc.lua
+luasharp.lua
+path_helpers.lua
 inventory_buddy.lua

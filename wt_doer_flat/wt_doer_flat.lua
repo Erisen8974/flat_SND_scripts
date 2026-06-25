@@ -38,6 +38,10 @@ configs:
 ================================================================================
 ]]
 
+if ___UTILS_IMPORTED then -- stop if importing circular dependencies
+    return
+end
+___UTILS_IMPORTED = true
 --[[
 ================================================================================
   BEGIN IMPORT: legacy_interface.lua
@@ -125,6 +129,728 @@ end
 --[[
 ================================================================================
   END IMPORT: legacy_interface.lua
+================================================================================
+]]
+
+--[[
+================================================================================
+  BEGIN IMPORT: extra_ipcs.lua
+================================================================================
+]]
+
+-- Skipped import: utils.lua
+--[[
+================================================================================
+  BEGIN IMPORT: hard_ipc.lua
+================================================================================
+]]
+
+-- Skipped import: utils.lua
+--[[
+================================================================================
+  BEGIN IMPORT: luasharp.lua
+================================================================================
+]]
+
+-- Skipped import: utils.lua
+import "System.Linq"
+import "System"
+
+
+function await(o, max_wait)
+    max_wait = default(max_wait, 30)
+    local ti = ResetTimeout()
+    while not o.IsCompleted do
+        CheckTimeout(max_wait, ti, CallerName(false), "Waiting for task to complete")
+        wait(0.1)
+    end
+    return o.Result
+end
+
+function make_list(content_type, ...)
+    local t = Type.GetType(("System.Collections.Generic.List`1[%s]"):format(content_type))
+    log_(LEVEL_VERBOSE, _text, "Making list of type", t)
+    local l = Activator.CreateInstance(t)
+    log_(LEVEL_VERBOSE, _text, "List made", l)
+    local args = table.pack(...)
+    for i = 1, args.n do
+        l:Add(args[i])
+    end
+    log_(LEVEL_VERBOSE, _text, "Initial items added")
+    log_(LEVEL_VERBOSE, _iterable, l)
+    return l
+end
+
+function make_set(content_type, ...)
+    local t = Type.GetType(("System.Collections.Generic.HashSet`1[%s]"):format(content_type))
+    log_(LEVEL_VERBOSE, _text, "Making set of type", t)
+    local l = Activator.CreateInstance(t)
+    log_(LEVEL_VERBOSE, _text, "Set made", l)
+    local args = table.pack(...)
+    for i = 1, args.n do
+        l:Add(args[i])
+    end
+    log_(LEVEL_VERBOSE, _text, "Initial items added")
+    log_(LEVEL_VERBOSE, _iterable, l)
+    return l
+end
+
+function make_instance_args(ctype, args_table)
+    local Activator_ty = luanet.ctype(Activator)
+    local CreateInstance = get_method_overload(Activator_ty, "CreateInstance",
+        { Type.GetType("System.Type"), Type.GetType("System.Object[]") })
+
+    local args = luanet.make_array(Object, args_table)
+    local arg_array = luanet.make_array(Object, { ctype, args })
+    local instance = CreateInstance:Invoke(nil, arg_array)
+    if arg_array == instance then
+        log_(LEVEL_CRITICAL, _array, args)
+        log_(LEVEL_CRITICAL, _array, arg_array)
+        error("Failed to make instance", CallerName(false), "type:", ctype, "args:", args)
+    end
+    return instance
+end
+
+function deref_pointer(ptr, ctype)
+    if Unsafe == nil then
+        _, Unsafe = load_type("System.Runtime.CompilerServices.Unsafe", "System.Runtime")
+    end
+    local AsRef = get_generic_method(Unsafe, "AsRef", { ctype })
+    if AsRef == nil or AsRef.Invoke == nil then
+        error("Failed to get AsRef method", CallerName(false), "ctype:", ctype)
+    end
+    local arg = luanet.make_array(Object, { ptr })
+    local ref = AsRef:Invoke(nil, arg)
+    if ref == arg then
+        error("Failed to deref pointer", CallerName(false), "pointer:", ptr, "ctype:", ctype)
+    end
+    return ref
+end
+
+function cs_instance(type, assembly)
+    local T, T_ty = load_type(type, assembly)
+
+    local instance = T.Instance()
+    return deref_pointer(instance, T_ty)
+end
+
+function assembly_name(inputstr)
+    for str in string.gmatch(inputstr, "[^%.]+") do
+        return str
+    end
+end
+
+function _field(o, field, ...)
+    if field == nil then
+        return o
+    end
+    local t = o:GetType()
+    local f = get_field(t, field, { private = true, static = true }, false)
+    if f == nil then
+        f = get_property(t, field, { private = true, static = true }, false)
+        if f == nil then
+            error("field or property not found", CallerName(false), o, field)
+        end
+    end
+    local res = f:GetValue(o)
+    if res == o then
+        error("could not get value", CallerName(false), o, field)
+    end
+    return _field(res, ...)
+end
+
+function get_plugin_instance(plugin_name, required)
+    local plugin = get_plugin_raw(plugin_name, required, true)
+    if plugin ~= nil then
+        return _field(plugin, "instance")
+    end
+end
+
+function get_plugin_raw(plugin_name, required, need_loaded)
+    need_loaded = default(need_loaded, true)
+    required = default(required, true)
+    local DalamudReflector = load_type("ECommons.Reflection.DalamudReflector")
+    local pluginManager = DalamudReflector.GetPluginManager()
+    for plugin in luanet.each(pluginManager.InstalledPlugins) do
+        if plugin.Name == plugin_name then
+            if plugin.IsLoaded or not need_loaded then
+                return plugin
+            end
+        end
+    end
+    if required then
+        error("Plugin not found", CallerName(false), plugin_name)
+    end
+end
+
+LOADED_ASSEMBLIES = {}
+TYPE_CACHE = {}
+
+function load_type(type_path, assembly)
+    assembly = default(assembly, assembly_name(type_path))
+    if not list_contains(LOADED_ASSEMBLIES, assembly) then
+        log_(LEVEL_VERBOSE, _text, "Loading assembly", assembly)
+        luanet.load_assembly(assembly)
+        table.insert(LOADED_ASSEMBLIES, assembly)
+    end
+    if not TYPE_CACHE[type_path] then
+        log_(LEVEL_VERBOSE, _text, "Loading type", type_path)
+        local type_var = luanet.import_type(type_path)
+        log_(LEVEL_VERBOSE, _text, "Loaded type", type_var)
+        TYPE_CACHE[type_path] = type_var
+    end
+    type_var = TYPE_CACHE[type_path]
+    return type_var, luanet.ctype(type_var)
+end
+
+--[[ this didnt work...
+function load_type_(type_path, assembly)
+    assembly = default(assembly, assembly_name(type_path))
+    local assembly_handle = nil
+    for i in luanet.each(AppDomain.CurrentDomain:GetAssemblies()) do
+        if i.FullName:match(assembly .. ",") then
+            if assembly_handle ~= nil then
+                StopScript("Multiple assemblies found matching name", CallerName(false), "assembly:", assembly)
+            end
+            assembly_handle = i
+        end
+    end
+    if assembly_handle == nil then
+        StopScript("Assembly not found", CallerName(false), "assembly:", assembly)
+    end
+    local type_found = nil
+    for i in luanet.each(assembly_handle.ExportedTypes) do
+        if i.FullName == type_path then
+            if type_found ~= nil then
+                StopScript("Multiple types found matching name", CallerName(false), "type_path:", type_path)
+            end
+            type_found = i
+        end
+    end
+    if type_found == nil then
+        StopScript("Type not found", CallerName(false), "type_path:", type_path)
+    end
+    return type_found
+end
+--]]
+
+function get_method(type, method_name, binding)
+    local method = type:GetMethod(method_name, make_binding_flags(binding))
+    if method == nil then
+        error("Method not found", CallerName(false), "type:", type, "method_name:", method_name)
+    end
+    return method
+end
+
+function get_field(type, field_name, binding, required)
+    required = default(required, true)
+    local field = type:GetField(field_name, make_binding_flags(binding))
+    if field == nil then
+        if required then
+            error("Field not found", CallerName(false), "type:", type, "field_name:", field_name)
+        end
+        return nil
+    end
+    return field
+end
+
+function get_property(type, property_name, binding, required)
+    required = default(required, true)
+    local property = type:GetProperty(property_name, make_binding_flags(binding))
+    if property == nil then
+        if required then
+            error("Property not found", CallerName(false), "type:", type, "property_name:", property_name)
+        end
+        return nil
+    end
+    return property
+end
+
+function dump_object_info(object, show_what)
+    log("--- info for object ---")
+    log("Object:", object)
+    local type = object:GetType()
+    dump_type_info(type, show_what, object)
+end
+
+function dump_type_info(type, show_what, object)
+    show_what = default(show_what, { properties = true, public = true, instance = true })
+    if object == nil then log("--- info for type ---") end
+    log("Type:", type)
+
+    local binding_flags = make_binding_flags(show_what)
+    log("BindingFlags:", binding_flags)
+
+    if default(show_what.properties, false) then
+        local props = type:GetProperties(binding_flags)
+        log(props.Length, "Properties")
+        for i = 0, props.Length - 1, 1 do
+            log(tostring(i) .. ':', props[i].Name, '---', props[i]:GetValue(object))
+        end
+    end
+
+    if default(show_what.fields, false) then
+        local fields = type:GetFields(binding_flags)
+        log(fields.Length, "Fields")
+        for i = 0, fields.Length - 1, 1 do
+            log(tostring(i) .. ':', fields[i].Name, '---', fields[i].FieldType, '---', fields[i]:GetValue(object))
+        end
+    end
+
+    if default(show_what.methods, false) then
+        local meth = type:GetMethods(binding_flags)
+        log(meth.Length, "Methods")
+        for i = 0, meth.Length - 1, 1 do
+            local extra = ""
+            if meth[i].IsGenericMethodDefinition then
+                extra = "<" .. tostring(meth[i]:GetGenericArguments().Length) .. ">"
+            end
+            log(tostring(i) .. ':', meth[i].Name .. extra)
+        end
+    end
+
+    if default(show_what.constructors, false) then
+        local ctors = type:GetConstructors(binding_flags)
+        log(ctors.Length, "Constructors")
+        for i = 0, ctors.Length - 1, 1 do
+            log(tostring(i) .. ':', ctors[i].Name)
+        end
+    end
+
+    if default(show_what.members, false) then
+        local members = type:GetMembers(binding_flags)
+        log(members.Length, "Members")
+        for i = 0, members.Length - 1, 1 do
+            log(tostring(i) .. ':', members[i].Name)
+        end
+    end
+
+    if default(show_what.nestedtypes, false) then
+        local nested = type:GetNestedTypes(binding_flags)
+        log(nested.Length, "NestedTypes")
+        for i = 0, nested.Length - 1, 1 do
+            log(tostring(i) .. ':', nested[i].Name)
+        end
+    end
+
+    log("--- end info ---")
+end
+
+function make_binding_flags(bindings)
+    if BindingFlags == nil then
+        BindingFlags = load_type('System.Reflection.BindingFlags')
+    end
+
+    bindings = default(bindings, {})
+
+    local flags = 0
+    if default(bindings.public, true) then
+        flags = flags | BindingFlags.Public.value__
+    end
+    if default(bindings.private, false) then
+        flags = flags | BindingFlags.NonPublic.value__
+    end
+    if default(bindings.instance, true) then
+        flags = flags | BindingFlags.Instance.value__
+    end
+    if default(bindings.static, false) then
+        flags = flags | BindingFlags.Static.value__
+    end
+    return luanet.enum(BindingFlags, flags)
+end
+
+function make_calling_conventions(callingConventions)
+    if CallingConventions == nil then
+        CallingConventions = load_type('System.Reflection.CallingConventions')
+    end
+
+    callingConventions = default(callingConventions, {})
+
+    local flags = 0
+    if default(callingConventions.standard, false) then
+        flags = flags | CallingConventions.Standard.value__
+    end
+    if default(callingConventions.varargs, false) then
+        flags = flags | CallingConventions.VarArgs.value__
+    end
+    if default(callingConventions.any, false) then
+        flags = flags | CallingConventions.Any.value__
+    end
+    if default(callingConventions.hasthis, false) then
+        flags = flags | CallingConventions.HasThis.value__
+    end
+    if default(callingConventions.explicitthis, false) then
+        flags = flags | CallingConventions.ExplicitThis.value__
+    end
+    return luanet.enum(CallingConventions, flags)
+end
+
+--- ########################
+--- ####### Generics #######
+--- ########################
+function get_generic_method(targetType, method_name, genericTypes)
+    local genericArgsArr = luanet.make_array(Type, genericTypes)
+    local methods = targetType:GetMethods()
+    for i = 0, methods.Length - 1 do
+        local m = methods[i]
+        if m.Name == method_name and m.IsGenericMethodDefinition and m:GetGenericArguments().Length == genericArgsArr.Length then
+            return m:MakeGenericMethod(genericArgsArr)
+        end
+    end
+    error("No generic method found", CallerName(false), "No matching generic method found for", method_name, "with",
+        #genericTypes, "generic args")
+end
+
+function get_method_overload(targetType, method_name, paramTypes)
+    local methods = targetType:GetMethods()
+    for i = 0, methods.Length - 1 do
+        local m = methods[i]
+        if m.Name == method_name then
+            local params = m:GetParameters()
+            if params.Length == #paramTypes then
+                local match = true
+                for j = 0, params.Length - 1 do
+                    if params[j].ParameterType ~= paramTypes[j + 1] then
+                        match = false
+                        break
+                    end
+                end
+                if match then
+                    return m
+                end
+            end
+        end
+    end
+    error("No method overload found", CallerName(false), "No matching overload found for", method_name, "with",
+        #paramTypes, "parameters")
+end
+--[[
+================================================================================
+  END IMPORT: luasharp.lua
+================================================================================
+]]
+
+import "System"
+
+ipc_cache_actions = {}
+ipc_cache_functions = {}
+
+shared_data_cache = {}
+
+function require_ipc(ipc_signature, result_type, arg_types)
+    if ipc_cache_actions[ipc_signature] ~= nil or ipc_cache_functions[ipc_signature] ~= nil then
+        log_(LEVEL_VERBOSE, _text, "IPC already loaded", ipc_signature)
+        return
+    end
+    arg_types = default(arg_types, {})
+    arg_types[#arg_types + 1] = default(result_type, 'System.Object')
+    for i, v in pairs(arg_types) do
+        if type(v) ~= 'string' then
+            error("Bad argument", CallerName(false), "argument types shound be strings")
+        end
+        arg_types[i] = Type.GetType(v)
+    end
+    local method = get_generic_method(Svc.PluginInterface:GetType(), 'GetIpcSubscriber', arg_types)
+    if method.Invoke == nil then
+        error("GetIpcSubscriber not found", CallerName(false), "No IPC subscriber for", #arg_types, "arguments")
+    end
+    local sig = luanet.make_array(Object, { ipc_signature })
+    local subscriber = method:Invoke(Svc.PluginInterface, sig)
+    if subscriber == nil then
+        error("IPC not found", CallerName(false), "signature:", ipc_signature)
+    end
+    if result_type == nil then
+        log_(LEVEL_DEBUG, _text, "loaded action IPC", ipc_signature)
+        ipc_cache_actions[ipc_signature] = subscriber
+    else
+        log_(LEVEL_DEBUG, _text, "loaded function IPC", ipc_signature)
+        ipc_cache_functions[ipc_signature] = subscriber
+    end
+end
+
+function invoke_ipc(ipc_signature, ...)
+    local function_subscriber = ipc_cache_functions[ipc_signature]
+    local action_subscriber = ipc_cache_actions[ipc_signature]
+    if function_subscriber == nil and action_subscriber == nil then
+        error("IPC not ready", CallerName(false), "signature:", ipc_signature, "is not loaded")
+    end
+    if function_subscriber ~= nil then
+        local result = function_subscriber:InvokeFunc(...)
+        if result == function_subscriber then
+            error("Function IPC failed", CallerName(false), "signature:", ipc_signature)
+        end
+        return result
+    end
+    -- otherwise its action IPC
+
+    local result = action_subscriber:InvokeAction(...)
+    if result == action_subscriber then
+        error("IPC failed", CallerName(false), "signature:", ipc_signature)
+    end
+end
+
+function get_shared_data(tag, data_type)
+    if shared_data_cache[tag] ~= nil then
+        return shared_data_cache[tag]
+    end
+    local method = get_generic_method(Svc.PluginInterface:GetType(), 'GetData', { Type.GetType(data_type) })
+    local sig = luanet.make_array(Object, { tag })
+    local so = method:Invoke(Svc.PluginInterface, sig)
+    if so == sig then
+        return nil
+    end
+    shared_data_cache[tag] = so
+    return so
+end
+
+function release_shared_data(tag)
+    if tag == nil then
+        for t, _ in pairs(shared_data_cache) do
+            log_(LEVEL_VERBOSE, _text, "Releasing shared data", t)
+            Svc.PluginInterface:RelinquishData(t)
+        end
+        shared_data_cache = {}
+    else
+        log_(LEVEL_VERBOSE, _text, "Releasing shared data", tag)
+        Svc.PluginInterface:RelinquishData(tag)
+        shared_data_cache[tag] = nil
+    end
+end
+--[[
+================================================================================
+  END IMPORT: hard_ipc.lua
+================================================================================
+]]
+
+import "System"
+
+
+local GBR = 'GatherBuddyReborn'
+local GBR_ENABLED = GBR .. '.IsAutoGatherEnabled'
+local GBR_WAITING = GBR .. '.IsAutoGatherWaiting'
+local GBR_SET_AUTO_GATHER = GBR .. '.SetAutoGatherEnabled'
+
+function gbr_gather(max_time)
+    require_ipc(GBR_SET_AUTO_GATHER, nil, { 'System.Boolean' })
+    invoke_ipc(GBR_SET_AUTO_GATHER, true)
+    wait_gbr_idle(max_time)
+    invoke_ipc(GBR_SET_AUTO_GATHER, false)
+end
+
+function wait_gbr_idle(max_wait)
+    require_ipc(GBR_WAITING, 'System.Boolean', {})
+    require_ipc(GBR_ENABLED, 'System.Boolean', {})
+    local ti = nil
+    if max_wait ~= nil then
+        ti = ResetTimeout()
+    end
+    repeat
+        if ti ~= nil then
+            CheckTimeout(max_wait, ti, CallerName(), "wait_gbr_idle timed out")
+        end
+        wait(1)
+        local waiting = invoke_ipc(GBR_WAITING)
+        local enabled = invoke_ipc(GBR_ENABLED)
+    until not enabled or waiting
+end
+
+local STYLIST = 'Stylist'
+local STYLIST_IS_BUSY = STYLIST .. '.IsBusy'
+local STYLIST_UPDATE_CURRENT_GEARSET = STYLIST .. '.UpdateCurrentGearset'
+
+function stylist_update_current_gearset()
+    Player.Gearset:Update()
+    require_ipc(STYLIST_IS_BUSY, 'System.Boolean', {})
+    require_ipc(STYLIST_UPDATE_CURRENT_GEARSET, nil, { 'System.Boolean' })
+    local ti = ResetTimeout()
+    invoke_ipc(STYLIST_UPDATE_CURRENT_GEARSET, true)
+    repeat
+        CheckTimeout(30, ti, CallerName(), "Stylist is busy")
+        wait(0.5)
+    until not invoke_ipc(STYLIST_IS_BUSY)
+end
+
+function stylist_update_all()
+    local start = os.clock()
+    Engines.Native.Run("/stylist all")
+    repeat
+        wait(0)
+    until stylist_is_busy() or start + 1 < os.clock()
+
+    while stylist_is_busy() do
+        wait(.5)
+    end
+end
+
+function stylist_is_busy()
+    require_ipc(STYLIST_IS_BUSY, 'System.Boolean', {})
+    return invoke_ipc(STYLIST_IS_BUSY)
+end
+
+local AUTORETAINER = 'AutoRetainer'
+local AUTORETAINER_GETCONFIG = AUTORETAINER .. '.GetConfig'
+local AUTORETAINER_GETCONFIG_SHUTDOWN = AUTORETAINER_GETCONFIG .. '.ShutdownOnSubExhaustion'
+
+function autoretainer_shutdown()
+    require_ipc(AUTORETAINER_GETCONFIG_SHUTDOWN, 'System.Boolean', {})
+    return invoke_ipc(AUTORETAINER_GETCONFIG_SHUTDOWN)
+end
+
+function ar_is_active(buffer_time)
+    buffer_time = default(buffer_time, 3 * MINUTES)
+    return IPC.AutoRetainer.GetMultiModeEnabled() and (
+        IPC.AutoRetainer.IsBusy() or
+        ar_multi_mode_would_start(buffer_time)
+    )
+end
+
+function ar_add_unconditional_sell(plan_name, itemid)
+    local i = get_plugin_instance(AUTORETAINER)
+    local im_settings = _field(i, "API", "Config", "AdditionalIMSettings")
+
+    for settings in luanet.each(im_settings) do
+        if settings.Name == plan_name then
+            if settings.IMProtectList:Contains(itemid) then
+                log_(LEVEL_ERROR, _text, "Item is in protected list", plan_name, itemid)
+                return false
+            end
+            if settings.IMAutoVendorHard:Contains(itemid) then
+                log_(LEVEL_INFO, _text, "Item is already in unconditional sell list", plan_name, itemid)
+                return true
+            end
+            settings.IMAutoVendorHard:Add(itemid)
+            log_(LEVEL_INFO, _text, "Added item to AutoRetainer unconditional sell list", plan_name, itemid)
+            return true
+        end
+    end
+    log_(LEVEL_ERROR, _text, "Failed to add item to AutoRetainer unconditional sell list, plan not found", plan_name,
+        itemid)
+    return false
+end
+
+function ar_multi_mode_would_start(venture_buffer)
+    venture_buffer = default(venture_buffer, 60)
+    local chars = IPC.AutoRetainer.GetRegisteredCharacters()
+    local now = os.time()
+    for cid in luanet.each(chars) do
+        local char = IPC.AutoRetainer.GetOfflineCharacterData(cid)
+        local next_ready = IPC.AutoRetainer.GetClosestRetainerVentureSecondsRemaining(cid)
+        log_(LEVEL_VERBOSE, _text, char.Name, char.Enabled, char.AnyAwaitingProcessing, next_ready)
+        if char.Enabled then
+            if char.AnyAwaitingProcessing or next_ready < venture_buffer then
+                return true
+            end
+            for sub in luanet.each(char.OfflineSubmarineData) do
+                local return_time = sub.ReturnTime
+                log_(LEVEL_VERBOSE, _text, "Submarine", return_time - now)
+                if return_time - now < venture_buffer then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local QUESTY = 'Questionable'
+
+function _zone_has_unlocked_aetheryte()
+    local zone = Svc.ClientState.TerritoryType
+    local row = luminia_row_checked("TerritoryType", zone).Aetheryte.RowId
+    if row == 0 then
+        return false
+    end
+    return Instances.Telepo:IsAetheryteUnlocked(row)
+end
+
+function _questy_get_quest_controller()
+    local i = get_plugin_instance(QUESTY)
+    local t = i:GetType().Assembly
+    local _serviceProvider = _field(i, "_serviceProvider")
+    local di_t = t:GetType("Questionable.DalamudInitializer")
+    local di = _serviceProvider:GetService(di_t)
+    return _field(di, "_questController")
+end
+
+function _questy_get_duties()
+    local i = get_plugin_instance(QUESTY)
+    local t = i:GetType().Assembly
+    local _serviceProvider = _field(i, "_serviceProvider")
+    local duty_config_t = t:GetType("Questionable.Windows.ConfigComponents.DutyConfigComponent")
+    local duty_config = _serviceProvider:GetService(duty_config_t)
+    return _field(duty_config, "Configuration", "Duties")
+end
+
+function questy_stop_soon()
+    local quest_controller = _questy_get_quest_controller()
+    local duties = _questy_get_duties()
+    duties.RunInstancedContentWithAutoDuty = false
+    --quest_controller.StopAfterCurrentQuest = true
+    quest_controller.StopBeforeTeleport = true
+end
+
+function questy_reenable()
+    local duties = _questy_get_duties()
+    duties.RunInstancedContentWithAutoDuty = true
+end
+
+function questy_stop_blocking(interval)
+    local interval = default(interval, 10)
+    questy_stop_soon()
+    repeat wait(interval) until not IPC.Questionable.IsRunning()
+    log_(LEVEL_DEBUG, _text, "Questy stopped, running multi mode")
+    questy_reenable()
+end
+
+local LIFESTREAM = 'Lifestream'
+
+function lifestream_command_blocking(command, player_ready, max_wait)
+    log_(LEVEL_DEBUG, _text, "Executing Lifestream command", command)
+    IPC.Lifestream.ExecuteCommand(command)
+
+    lifestream_block(player_ready, max_wait)
+end
+
+function lifestream_block(player_ready, max_wait)
+    running_lifestream = true
+    player_ready = default(player_ready, true)
+    repeat wait(.1) until IPC.Lifestream.IsBusy()
+    log_(LEVEL_DEBUG, _text, "Lifestream command is running")
+    repeat wait(1) until not IPC.Lifestream.IsBusy()
+    log_(LEVEL_DEBUG, _text, "Lifestream command finished")
+
+    if player_ready then
+        wait_ready(max_wait, 1, true, .5)
+        log_(LEVEL_DEBUG, _text, "Lifestream command player ready")
+    end
+end
+
+local AUTODUTY = 'AutoDuty'
+
+function ad_helper_running()
+    local ad = get_plugin_instance(AUTODUTY)
+    local ass = ad:GetType().Assembly
+    local helper = ass:GetType("AutoDuty.Helpers.ActiveHelper")
+    local m = get_method(helper, "AnyHelperRunning", { static = true })
+    local arg_array = luanet.make_array(Object, {})
+    local res = m:Invoke(helper, arg_array)
+    return res
+end
+
+function wait_ad(command)
+    local s = os.clock()
+    if command then
+        log_(LEVEL_DEBUG, _text, 'Executing AutoDuty command', command)
+        yield("/ad " .. command)
+    end
+    repeat wait(.1) until ad_helper_running() or os.clock() - s > 1
+    log_(LEVEL_DEBUG, _text, 'AD Started (or time)')
+    repeat wait(1) until not ad_helper_running()
+    log_(LEVEL_DEBUG, _text, 'AD Done')
+end
+--[[
+================================================================================
+  END IMPORT: extra_ipcs.lua
 ================================================================================
 ]]
 
@@ -953,490 +1679,8 @@ end
 ]]
 
 -- Skipped import: utils.lua
---[[
-================================================================================
-  BEGIN IMPORT: luasharp.lua
-================================================================================
-]]
-
--- Skipped import: utils.lua
-import "System.Linq"
-import "System"
-
-
-function await(o, max_wait)
-    max_wait = default(max_wait, 30)
-    local ti = ResetTimeout()
-    while not o.IsCompleted do
-        CheckTimeout(max_wait, ti, CallerName(false), "Waiting for task to complete")
-        wait(0.1)
-    end
-    return o.Result
-end
-
-function make_list(content_type, ...)
-    local t = Type.GetType(("System.Collections.Generic.List`1[%s]"):format(content_type))
-    log_(LEVEL_VERBOSE, _text, "Making list of type", t)
-    local l = Activator.CreateInstance(t)
-    log_(LEVEL_VERBOSE, _text, "List made", l)
-    local args = table.pack(...)
-    for i = 1, args.n do
-        l:Add(args[i])
-    end
-    log_(LEVEL_VERBOSE, _text, "Initial items added")
-    log_(LEVEL_VERBOSE, _iterable, l)
-    return l
-end
-
-function make_set(content_type, ...)
-    local t = Type.GetType(("System.Collections.Generic.HashSet`1[%s]"):format(content_type))
-    log_(LEVEL_VERBOSE, _text, "Making set of type", t)
-    local l = Activator.CreateInstance(t)
-    log_(LEVEL_VERBOSE, _text, "Set made", l)
-    local args = table.pack(...)
-    for i = 1, args.n do
-        l:Add(args[i])
-    end
-    log_(LEVEL_VERBOSE, _text, "Initial items added")
-    log_(LEVEL_VERBOSE, _iterable, l)
-    return l
-end
-
-function make_instance_args(ctype, args_table)
-    local Activator_ty = luanet.ctype(Activator)
-    local CreateInstance = get_method_overload(Activator_ty, "CreateInstance",
-        { Type.GetType("System.Type"), Type.GetType("System.Object[]") })
-
-    local args = luanet.make_array(Object, args_table)
-    local arg_array = luanet.make_array(Object, { ctype, args })
-    local instance = CreateInstance:Invoke(nil, arg_array)
-    if arg_array == instance then
-        log_(LEVEL_CRITICAL, _array, args)
-        log_(LEVEL_CRITICAL, _array, arg_array)
-        error("Failed to make instance", CallerName(false), "type:", ctype, "args:", args)
-    end
-    return instance
-end
-
-function deref_pointer(ptr, ctype)
-    if Unsafe == nil then
-        _, Unsafe = load_type("System.Runtime.CompilerServices.Unsafe", "System.Runtime")
-    end
-    local AsRef = get_generic_method(Unsafe, "AsRef", { ctype })
-    if AsRef == nil or AsRef.Invoke == nil then
-        error("Failed to get AsRef method", CallerName(false), "ctype:", ctype)
-    end
-    local arg = luanet.make_array(Object, { ptr })
-    local ref = AsRef:Invoke(nil, arg)
-    if ref == arg then
-        error("Failed to deref pointer", CallerName(false), "pointer:", ptr, "ctype:", ctype)
-    end
-    return ref
-end
-
-function cs_instance(type, assembly)
-    local T, T_ty = load_type(type, assembly)
-
-    local instance = T.Instance()
-    return deref_pointer(instance, T_ty)
-end
-
-function assembly_name(inputstr)
-    for str in string.gmatch(inputstr, "[^%.]+") do
-        return str
-    end
-end
-
-function _field(o, field, ...)
-    if field == nil then
-        return o
-    end
-    local t = o:GetType()
-    local f = get_field(t, field, { private = true, static = true }, false)
-    if f == nil then
-        f = get_property(t, field, { private = true, static = true }, false)
-        if f == nil then
-            error("field or property not found", CallerName(false), o, field)
-        end
-    end
-    local res = f:GetValue(o)
-    if res == o then
-        error("could not get value", CallerName(false), o, field)
-    end
-    return _field(res, ...)
-end
-
-function get_plugin_instance(plugin_name, required)
-    local plugin = get_plugin_raw(plugin_name, required, true)
-    if plugin ~= nil then
-        return _field(plugin, "instance")
-    end
-end
-
-function get_plugin_raw(plugin_name, required, need_loaded)
-    need_loaded = default(need_loaded, true)
-    required = default(required, true)
-    local DalamudReflector = load_type("ECommons.Reflection.DalamudReflector")
-    local pluginManager = DalamudReflector.GetPluginManager()
-    for plugin in luanet.each(pluginManager.InstalledPlugins) do
-        if plugin.Name == plugin_name then
-            if plugin.IsLoaded or not need_loaded then
-                return plugin
-            end
-        end
-    end
-    if required then
-        error("Plugin not found", CallerName(false), plugin_name)
-    end
-end
-
-LOADED_ASSEMBLIES = {}
-TYPE_CACHE = {}
-
-function load_type(type_path, assembly)
-    assembly = default(assembly, assembly_name(type_path))
-    if not list_contains(LOADED_ASSEMBLIES, assembly) then
-        log_(LEVEL_VERBOSE, _text, "Loading assembly", assembly)
-        luanet.load_assembly(assembly)
-        table.insert(LOADED_ASSEMBLIES, assembly)
-    end
-    if not TYPE_CACHE[type_path] then
-        log_(LEVEL_VERBOSE, _text, "Loading type", type_path)
-        local type_var = luanet.import_type(type_path)
-        log_(LEVEL_VERBOSE, _text, "Loaded type", type_var)
-        TYPE_CACHE[type_path] = type_var
-    end
-    type_var = TYPE_CACHE[type_path]
-    return type_var, luanet.ctype(type_var)
-end
-
---[[ this didnt work...
-function load_type_(type_path, assembly)
-    assembly = default(assembly, assembly_name(type_path))
-    local assembly_handle = nil
-    for i in luanet.each(AppDomain.CurrentDomain:GetAssemblies()) do
-        if i.FullName:match(assembly .. ",") then
-            if assembly_handle ~= nil then
-                StopScript("Multiple assemblies found matching name", CallerName(false), "assembly:", assembly)
-            end
-            assembly_handle = i
-        end
-    end
-    if assembly_handle == nil then
-        StopScript("Assembly not found", CallerName(false), "assembly:", assembly)
-    end
-    local type_found = nil
-    for i in luanet.each(assembly_handle.ExportedTypes) do
-        if i.FullName == type_path then
-            if type_found ~= nil then
-                StopScript("Multiple types found matching name", CallerName(false), "type_path:", type_path)
-            end
-            type_found = i
-        end
-    end
-    if type_found == nil then
-        StopScript("Type not found", CallerName(false), "type_path:", type_path)
-    end
-    return type_found
-end
---]]
-
-function get_method(type, method_name, binding)
-    local method = type:GetMethod(method_name, make_binding_flags(binding))
-    if method == nil then
-        error("Method not found", CallerName(false), "type:", type, "method_name:", method_name)
-    end
-    return method
-end
-
-function get_field(type, field_name, binding, required)
-    required = default(required, true)
-    local field = type:GetField(field_name, make_binding_flags(binding))
-    if field == nil then
-        if required then
-            error("Field not found", CallerName(false), "type:", type, "field_name:", field_name)
-        end
-        return nil
-    end
-    return field
-end
-
-function get_property(type, property_name, binding, required)
-    required = default(required, true)
-    local property = type:GetProperty(property_name, make_binding_flags(binding))
-    if property == nil then
-        if required then
-            error("Property not found", CallerName(false), "type:", type, "property_name:", property_name)
-        end
-        return nil
-    end
-    return property
-end
-
-function dump_object_info(object, show_what)
-    log("--- info for object ---")
-    log("Object:", object)
-    local type = object:GetType()
-    dump_type_info(type, show_what, object)
-end
-
-function dump_type_info(type, show_what, object)
-    show_what = default(show_what, { properties = true, public = true, instance = true })
-    if object == nil then log("--- info for type ---") end
-    log("Type:", type)
-
-    local binding_flags = make_binding_flags(show_what)
-    log("BindingFlags:", binding_flags)
-
-    if default(show_what.properties, false) then
-        local props = type:GetProperties(binding_flags)
-        log(props.Length, "Properties")
-        for i = 0, props.Length - 1, 1 do
-            log(tostring(i) .. ':', props[i].Name, '---', props[i]:GetValue(object))
-        end
-    end
-
-    if default(show_what.fields, false) then
-        local fields = type:GetFields(binding_flags)
-        log(fields.Length, "Fields")
-        for i = 0, fields.Length - 1, 1 do
-            log(tostring(i) .. ':', fields[i].Name, '---', fields[i].FieldType, '---', fields[i]:GetValue(object))
-        end
-    end
-
-    if default(show_what.methods, false) then
-        local meth = type:GetMethods(binding_flags)
-        log(meth.Length, "Methods")
-        for i = 0, meth.Length - 1, 1 do
-            local extra = ""
-            if meth[i].IsGenericMethodDefinition then
-                extra = "<" .. tostring(meth[i]:GetGenericArguments().Length) .. ">"
-            end
-            log(tostring(i) .. ':', meth[i].Name .. extra)
-        end
-    end
-
-    if default(show_what.constructors, false) then
-        local ctors = type:GetConstructors(binding_flags)
-        log(ctors.Length, "Constructors")
-        for i = 0, ctors.Length - 1, 1 do
-            log(tostring(i) .. ':', ctors[i].Name)
-        end
-    end
-
-    if default(show_what.members, false) then
-        local members = type:GetMembers(binding_flags)
-        log(members.Length, "Members")
-        for i = 0, members.Length - 1, 1 do
-            log(tostring(i) .. ':', members[i].Name)
-        end
-    end
-
-    if default(show_what.nestedtypes, false) then
-        local nested = type:GetNestedTypes(binding_flags)
-        log(nested.Length, "NestedTypes")
-        for i = 0, nested.Length - 1, 1 do
-            log(tostring(i) .. ':', nested[i].Name)
-        end
-    end
-
-    log("--- end info ---")
-end
-
-function make_binding_flags(bindings)
-    if BindingFlags == nil then
-        BindingFlags = load_type('System.Reflection.BindingFlags')
-    end
-
-    bindings = default(bindings, {})
-
-    local flags = 0
-    if default(bindings.public, true) then
-        flags = flags | BindingFlags.Public.value__
-    end
-    if default(bindings.private, false) then
-        flags = flags | BindingFlags.NonPublic.value__
-    end
-    if default(bindings.instance, true) then
-        flags = flags | BindingFlags.Instance.value__
-    end
-    if default(bindings.static, false) then
-        flags = flags | BindingFlags.Static.value__
-    end
-    return luanet.enum(BindingFlags, flags)
-end
-
-function make_calling_conventions(callingConventions)
-    if CallingConventions == nil then
-        CallingConventions = load_type('System.Reflection.CallingConventions')
-    end
-
-    callingConventions = default(callingConventions, {})
-
-    local flags = 0
-    if default(callingConventions.standard, false) then
-        flags = flags | CallingConventions.Standard.value__
-    end
-    if default(callingConventions.varargs, false) then
-        flags = flags | CallingConventions.VarArgs.value__
-    end
-    if default(callingConventions.any, false) then
-        flags = flags | CallingConventions.Any.value__
-    end
-    if default(callingConventions.hasthis, false) then
-        flags = flags | CallingConventions.HasThis.value__
-    end
-    if default(callingConventions.explicitthis, false) then
-        flags = flags | CallingConventions.ExplicitThis.value__
-    end
-    return luanet.enum(CallingConventions, flags)
-end
-
---- ########################
---- ####### Generics #######
---- ########################
-function get_generic_method(targetType, method_name, genericTypes)
-    local genericArgsArr = luanet.make_array(Type, genericTypes)
-    local methods = targetType:GetMethods()
-    for i = 0, methods.Length - 1 do
-        local m = methods[i]
-        if m.Name == method_name and m.IsGenericMethodDefinition and m:GetGenericArguments().Length == genericArgsArr.Length then
-            return m:MakeGenericMethod(genericArgsArr)
-        end
-    end
-    error("No generic method found", CallerName(false), "No matching generic method found for", method_name, "with",
-        #genericTypes, "generic args")
-end
-
-function get_method_overload(targetType, method_name, paramTypes)
-    local methods = targetType:GetMethods()
-    for i = 0, methods.Length - 1 do
-        local m = methods[i]
-        if m.Name == method_name then
-            local params = m:GetParameters()
-            if params.Length == #paramTypes then
-                local match = true
-                for j = 0, params.Length - 1 do
-                    if params[j].ParameterType ~= paramTypes[j + 1] then
-                        match = false
-                        break
-                    end
-                end
-                if match then
-                    return m
-                end
-            end
-        end
-    end
-    error("No method overload found", CallerName(false), "No matching overload found for", method_name, "with",
-        #paramTypes, "parameters")
-end
---[[
-================================================================================
-  END IMPORT: luasharp.lua
-================================================================================
-]]
-
---[[
-================================================================================
-  BEGIN IMPORT: hard_ipc.lua
-================================================================================
-]]
-
--- Skipped import: utils.lua
 -- Skipped import: luasharp.lua
-import "System"
-
-ipc_cache_actions = {}
-ipc_cache_functions = {}
-
-shared_data_cache = {}
-
-function require_ipc(ipc_signature, result_type, arg_types)
-    if ipc_cache_actions[ipc_signature] ~= nil or ipc_cache_functions[ipc_signature] ~= nil then
-        log_(LEVEL_VERBOSE, _text, "IPC already loaded", ipc_signature)
-        return
-    end
-    arg_types = default(arg_types, {})
-    arg_types[#arg_types + 1] = default(result_type, 'System.Object')
-    for i, v in pairs(arg_types) do
-        if type(v) ~= 'string' then
-            error("Bad argument", CallerName(false), "argument types shound be strings")
-        end
-        arg_types[i] = Type.GetType(v)
-    end
-    local method = get_generic_method(Svc.PluginInterface:GetType(), 'GetIpcSubscriber', arg_types)
-    if method.Invoke == nil then
-        error("GetIpcSubscriber not found", CallerName(false), "No IPC subscriber for", #arg_types, "arguments")
-    end
-    local sig = luanet.make_array(Object, { ipc_signature })
-    local subscriber = method:Invoke(Svc.PluginInterface, sig)
-    if subscriber == nil then
-        error("IPC not found", CallerName(false), "signature:", ipc_signature)
-    end
-    if result_type == nil then
-        log_(LEVEL_DEBUG, _text, "loaded action IPC", ipc_signature)
-        ipc_cache_actions[ipc_signature] = subscriber
-    else
-        log_(LEVEL_DEBUG, _text, "loaded function IPC", ipc_signature)
-        ipc_cache_functions[ipc_signature] = subscriber
-    end
-end
-
-function invoke_ipc(ipc_signature, ...)
-    local function_subscriber = ipc_cache_functions[ipc_signature]
-    local action_subscriber = ipc_cache_actions[ipc_signature]
-    if function_subscriber == nil and action_subscriber == nil then
-        error("IPC not ready", CallerName(false), "signature:", ipc_signature, "is not loaded")
-    end
-    if function_subscriber ~= nil then
-        local result = function_subscriber:InvokeFunc(...)
-        if result == function_subscriber then
-            error("Function IPC failed", CallerName(false), "signature:", ipc_signature)
-        end
-        return result
-    end
-    -- otherwise its action IPC
-
-    local result = action_subscriber:InvokeAction(...)
-    if result == action_subscriber then
-        error("IPC failed", CallerName(false), "signature:", ipc_signature)
-    end
-end
-
-function get_shared_data(tag, data_type)
-    if shared_data_cache[tag] ~= nil then
-        return shared_data_cache[tag]
-    end
-    local method = get_generic_method(Svc.PluginInterface:GetType(), 'GetData', { Type.GetType(data_type) })
-    local sig = luanet.make_array(Object, { tag })
-    local so = method:Invoke(Svc.PluginInterface, sig)
-    if so == sig then
-        return nil
-    end
-    shared_data_cache[tag] = so
-    return so
-end
-
-function release_shared_data(tag)
-    if tag == nil then
-        for t, _ in pairs(shared_data_cache) do
-            log_(LEVEL_VERBOSE, _text, "Releasing shared data", t)
-            Svc.PluginInterface:RelinquishData(t)
-        end
-        shared_data_cache = {}
-    else
-        log_(LEVEL_VERBOSE, _text, "Releasing shared data", tag)
-        Svc.PluginInterface:RelinquishData(tag)
-        shared_data_cache[tag] = nil
-    end
-end
---[[
-================================================================================
-  END IMPORT: hard_ipc.lua
-================================================================================
-]]
-
+-- Skipped import: hard_ipc.lua
 import "System.Numerics"
 import "System"
 
