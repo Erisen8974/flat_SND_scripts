@@ -636,6 +636,652 @@ end
 ================================================================================
 ]]
 
+--[[
+================================================================================
+  BEGIN IMPORT: inventory_buddy.lua
+================================================================================
+]]
+
+-- Skipped import: utils.lua
+-- Skipped import: luasharp.lua
+
+
+ALL_INVENTORY = {
+    InventoryType.Inventory1,
+    InventoryType.Inventory2,
+    InventoryType.Inventory3,
+    InventoryType.Inventory4,
+}
+
+NORMAL_SADDLEBAG = {
+    InventoryType.SaddleBag1,
+    InventoryType.SaddleBag2,
+}
+
+PREMIUM_SADDLEBAG = {
+    InventoryType.PremiumSaddleBag1,
+    InventoryType.PremiumSaddleBag2,
+}
+
+ALL_ARMORY = {
+    InventoryType.ArmoryHead,
+    InventoryType.ArmoryBody,
+    InventoryType.ArmoryHands,
+    InventoryType.ArmoryLegs,
+    InventoryType.ArmoryFeets,
+    InventoryType.ArmoryEar,
+    InventoryType.ArmoryNeck,
+    InventoryType.ArmoryWrist,
+    InventoryType.ArmoryRings,
+    InventoryType.ArmoryMainHand,
+    InventoryType.ArmoryOffHand,
+}
+
+ALL_RETAINER = {
+    InventoryType.RetainerPage1,
+    InventoryType.RetainerPage2,
+    InventoryType.RetainerPage3,
+    InventoryType.RetainerPage4,
+    InventoryType.RetainerPage5,
+    InventoryType.RetainerPage6,
+    InventoryType.RetainerPage7,
+}
+
+ALL_EQUIPMENT = {
+    InventoryType.EquippedItems,
+    InventoryType.ArmoryHead,
+    InventoryType.ArmoryBody,
+    InventoryType.ArmoryHands,
+    InventoryType.ArmoryLegs,
+    InventoryType.ArmoryFeets,
+    InventoryType.ArmoryEar,
+    InventoryType.ArmoryNeck,
+    InventoryType.ArmoryWrist,
+    InventoryType.ArmoryRings,
+    InventoryType.ArmoryMainHand,
+    InventoryType.ArmoryOffHand,
+}
+
+NUM_GEARSETS = 100
+
+item_info_list = {
+    -- ARR Maps
+    TimewornLeatherMap = { itemId = 6688, itemName = "Timeworn Leather Map" },
+    TimewornGoatskinMap = { itemId = 6689, itemName = "Timeworn Goatskin Map" },
+    TimewornToadskinMap = { itemId = 6690, itemName = "Timeworn Toadskin Map" },
+    TimewornBoarskinMap = { itemId = 6691, itemName = "Timeworn Boarskin Map" },
+    TimewornPeisteskinMap = { itemId = 6692, itemName = "Timeworn Peisteskin Map" },
+
+    -- Heavensward Maps
+    TimewornArchaeoskinMap = { itemId = 12241, itemName = "Timeworn Archaeoskin Map" },
+    TimewornWyvernskinMap = { itemId = 12242, itemName = "Timeworn Wyvernskin Map" },
+    TimewornDragonskinMap = { itemId = 12243, itemName = "Timeworn Dragonskin Map" },
+
+    -- Stormblood Maps
+    TimewornGaganaskinMap = { itemId = 17835, itemName = "Timeworn Gaganaskin Map" },
+    TimewornGazelleskinMap = { itemId = 17836, itemName = "Timeworn Gazelleskin Map" },
+
+    -- Shadowbringers Maps
+    TimewornGliderskinMap = { itemId = 26744, itemName = "Timeworn Gliderskin Map" },
+    TimewornZonureskinMap = { itemId = 26745, itemName = "Timeworn Zonureskin Map" },
+
+    -- Endwalker Maps
+    TimewornSaigaskinMap = { itemId = 36611, itemName = "Timeworn Saigaskin Map" },
+    TimewornKumbhiraskinMap = { itemId = 36612, itemName = "Timeworn Kumbhiraskin Map" },
+    TimewornOphiotauroskinMap = { itemId = 39591, itemName = "Timeworn Ophiotauroskin Map" },
+
+    -- Dawntrail Maps
+    TimewornLoboskinMap = { itemId = 43556, itemName = "Timeworn Loboskin Map" },
+    TimewornBraaxskinMap = { itemId = 43557, itemName = "Timeworn Br'aaxskin Map" },
+
+
+    -- Raid Utils
+    Moqueca = { itemId = 44178, recipeId = 35926, itemName = "Moqueca" },
+    Grade2GemdraughtofDexterity = { itemId = 44163, recipeId = 35919, itemName = "Grade 2 Gemdraught of Dexterity" },
+    Grade2GemdraughtofIntelligence = { itemId = 44165, recipeId = 35921, itemName = "Grade 2 Gemdraught of Intelligence" },
+
+    SquadronSpiritbondingManual = { itemId = 14951, buffId = 1083, itemName = "Squadron Spiritbonding Manual" },
+    SuperiorSpiritbondPotion = { itemId = 27960, buffId = 49, itemName = "Superior Spiritbond Potion" }, --This is just medicated
+
+
+
+    -- precrafts:
+    SanctifiedWater = { itemId = 44051, recipeId = 5661, itemName = "Sanctified Water" },
+    CoconutMilk = { itemId = 36082, recipeId = 5287, itemName = "Coconut Milk" },
+    TuraliCornOil = { itemId = 43976, recipeId = 5590, itemName = "Turali Corn Oil" },
+
+
+
+    -- Hunt bills
+    EliteMarkBill = { itemId = 2001362, itemName = "Elite Mark Bill" },
+    EliteClanMarkBill = { itemId = 2001703, itemName = "Elite Clan Mark Bill" },
+    EliteVeteranClanMarkBill = { itemId = 2002116, itemName = "Elite Veteran Clan Mark Bill" },
+    EliteClanNutsyMarkBill = { itemId = 2002631, itemName = "Elite Clan Nutsy Mark Bill" },
+    EliteGuildshipMarkBill = { itemId = 2003093, itemName = "Elite Guildship Mark Bill" },
+    EliteDawnHuntBill = { itemId = 2003512, itemName = "Elite Dawn Hunt Bill" },
+}
+
+
+
+function normalize_item_name(name)
+    return name:gsub("%W", "")
+end
+
+function get_item_name_from_id(id)
+    return luminia_row_checked("item", id).Name
+end
+
+function get_item_info(item_name)
+    local item_info = item_info_list[normalize_item_name(item_name)]
+    if item_info == nil then
+        error("No information for item", item_name)
+    end
+    return item_info
+end
+
+function get_item_info_by_id(item_id)
+    for _, item_info in pairs(item_info_list) do
+        if item_info.itemId == item_id then
+            return item_info
+        end
+    end
+end
+
+function venture_count()
+    return Inventory.GetItemCount(21072)
+end
+
+function equip_gearset(gearset_name, update_after)
+    update_after = default(update_after, false)
+    local ti = ResetTimeout()
+    for gs in luanet.each(Player.Gearsets) do
+        if gs.Name == gearset_name then
+            repeat
+                CheckTimeout(10, ti, CallerName(false), "Couldnt equip gearset:", gearset_name)
+                gs:Equip()
+                wait_ready(10, 1)
+            until Player.Gearset.Name == gearset_name
+            log_(LEVEL_INFO, _text, "Gearset", gearset_name, "equipped")
+            if update_after then
+                Player.Gearset:Update()
+            end
+            return true
+        end
+    end
+    log_(LEVEL_ERROR, _text, "Gearset", gearset_name, "not found")
+    return false
+end
+
+function equip_classjob(classjob_abrev, update_after)
+    update_after = default(update_after, false)
+    classjob_abrev = classjob_abrev:upper()
+    local ti = ResetTimeout()
+    for gs in luanet.each(Player.Gearsets) do
+        if luminia_row_checked("ClassJob", gs.ClassJob).Abbreviation == classjob_abrev then
+            gearset_name = gs.Name
+            log_(LEVEL_INFO, _text, "Equipping gearset", gearset_name, "for class/job", classjob_abrev)
+            repeat
+                CheckTimeout(10, ti, CallerName(false), "Couldnt equip gearset:", gearset_name)
+                gs:Equip()
+                wait(0.3)
+                yesno = Addons.GetAddon("SelectYesno")
+                wait(0.3)
+                if yesno.Ready then
+                    close_yes_no(true,
+                        "registered to this gear set could not be found in your Armoury Chest. Replace it with")
+                end
+                wait(0.4)
+            until Player.Gearset.Name == gearset_name
+            wait_ready(10, 1)
+            log_(LEVEL_VERBOSE, _text, "Gearset", gearset_name, "equipped")
+            if update_after then
+                Player.Gearset:Update()
+            end
+            return true
+        end
+    end
+    log_(LEVEL_ERROR, _text, "No gearset found for class/job", classjob_abrev)
+    return false
+end
+
+function move_to_inventory(item)
+    for _, destination in pairs(ALL_INVENTORY) do
+        if Inventory.GetInventoryContainer(destination).FreeSlots > 0 then
+            item:MoveItemSlot(destination)
+            return true
+        end
+    end
+    return false
+end
+
+function item_id_range(lowest_item_id, highest_item_id, in_range)
+    highest_item_id = default(highest_item_id, lowest_item_id)
+    lowest_item_id = default(lowest_item_id, 0)
+    highest_item_id = default(highest_item_id, 999999999)
+    in_range = default(in_range, true)
+    return function(target_item)
+        if lowest_item_id <= target_item.ItemId and target_item.ItemId <= highest_item_id then
+            return in_range
+        end
+        return not in_range
+    end
+end
+
+_RaptureGearsetModule_GearsetItemIndex = nil
+
+local function RaptureGearsetModule_GearsetItemIndex()
+    if _RaptureGearsetModule_GearsetItemIndex == nil then
+        _RaptureGearsetModule_GearsetItemIndex = load_type(
+            "FFXIVClientStructs.FFXIV.Client.UI.Misc.RaptureGearsetModule+GearsetItemIndex")
+    end
+    return _RaptureGearsetModule_GearsetItemIndex
+end
+
+function current_gearset_index()
+    local RaptureGearsetModule = cs_instance("FFXIVClientStructs.FFXIV.Client.UI.Misc.RaptureGearsetModule")
+    return RaptureGearsetModule.CurrentGearsetIndex
+end
+
+function resolve_gearset_ids(number)
+    RaptureGearsetModule = cs_instance("FFXIVClientStructs.FFXIV.Client.UI.Misc.RaptureGearsetModule")
+    if not RaptureGearsetModule:IsValidGearset(number) then
+        return nil
+    end
+    if RaptureGearsetModule_GearsetEntry == nil then
+        _, RaptureGearsetModule_GearsetEntry = load_type(
+            "FFXIVClientStructs.FFXIV.Client.UI.Misc.RaptureGearsetModule+GearsetEntry")
+    end
+    local gearset_ptr = RaptureGearsetModule:GetGearset(number)
+    if gearset_ptr == nil then
+        return nil
+    end
+    local gs = deref_pointer(gearset_ptr, RaptureGearsetModule_GearsetEntry)
+    function _resolve_gearset_ids__get_item_id(slot)
+        local itemId = gs:GetItem(slot).ItemId
+        if itemId == 0 then
+            return nil
+        end
+        return itemId
+    end
+
+    return {
+        MainHand = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex().MainHand),
+        OffHand = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex().OffHand),
+        Head = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex().Head),
+        Body = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex().Body),
+        Hands = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex().Hands),
+        Legs = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex().Legs),
+        Feet = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex().Feet),
+        Ears = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex().Ears),
+        Neck = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex().Neck),
+        Wrists = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex().Wrists),
+        LeftRing = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex().RingLeft),
+        RightRing = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex().RingRight),
+    }
+end
+
+-- dont preserve too long cause it can change, but its a little slow to generate
+_GEARSET_CACHE = {}
+_GEARSET_LAST_UPDATE = os.clock()
+_GEARSET_MISSING_OKAY = false
+
+function reset_gearset_cache()
+    _GEARSET_CACHE = {}
+    _GEARSET_LAST_UPDATE = os.clock()
+end
+
+function resolve_gearset_items(number)
+    if _GEARSET_LAST_UPDATE + 10 <= os.clock() then
+        reset_gearset_cache()
+    end
+    if _GEARSET_CACHE[number] == nil then
+        local gearset_ids = resolve_gearset_ids(number)
+        if gearset_ids == nil then
+            return nil
+        end
+        local items = {}
+        for slot, _ in pairs(gearset_ids) do
+            items[slot] = nil
+        end
+        for _, container in pairs(ALL_EQUIPMENT) do
+            local inv = Inventory.GetInventoryContainer(container)
+            for item in luanet.each(inv.Items) do
+                long_task_delay()
+                local itemId = item.ItemId
+                if item.IsHighQuality then
+                    itemId = itemId + 1000000
+                end
+                for slot, gid in pairs(gearset_ids) do
+                    if itemId == gid then
+                        gearset_ids[slot] = nil
+                        items[slot] = item
+                        break
+                    end
+                end
+            end
+        end
+        for slot, gid in pairs(gearset_ids) do
+            if gid ~= nil then
+                log_(LEVEL_ERROR, _text, "Did not find item for slot", slot, "with id", gid, "in gearset", number)
+                if not _GEARSET_MISSING_OKAY then
+                    error("GearsetItemNotFound", CallerName(false), "Did not find item for slot", slot, "with id", gid,
+                        "in gearset", number)
+                end
+            end
+        end
+        _GEARSET_CACHE[number] = items
+    end
+    return _GEARSET_CACHE[number]
+end
+
+function item_in_gearset(in_gearset)
+    in_gearset = default(in_gearset, true)
+    return function(item)
+        for idx = 0, NUM_GEARSETS - 1 do
+            gs = resolve_gearset_items(idx)
+            if gs ~= nil then
+                for _, gsi in pairs(gs) do
+                    if gsi.ItemId == item.ItemId
+                        and gsi.Slot == item.Slot
+                        and gsi.Container == item.Container
+                        and gsi.IsHighQuality == item.IsHighQuality
+                    then
+                        return in_gearset
+                    end
+                end
+            end
+        end
+        return not in_gearset
+    end
+end
+
+function itemid_gs_submittable(itemid)
+    local item_row = luminia_row_checked("item", itemid)
+    return item_row.Rarity > 1 and item_row.EquipSlotCategory.RowId ~= 0
+end
+
+function item_gs_submittable(item)
+    return itemid_gs_submittable(item.ItemId)
+end
+
+function is_item_job(job)
+    return function(item)
+        local cat = luminia_row_checked("item", item.ItemId).ClassJobCategory
+        if cat.RowId == 0 then
+            return nil
+        end
+        return cat[job]
+    end
+end
+
+function max_item_level(max_level)
+    return function(item)
+        local equip_level = luminia_row_checked("item", item.ItemId).LevelEquip
+        return equip_level <= max_level
+    end
+end
+
+function is_item_equip_slot(slot)
+    return function(item)
+        local cat = luminia_row_checked("item", item.ItemId).EquipSlotCategory
+        if cat.RowId == 0 then
+            return nil
+        end
+        return cat[slot] == 1
+    end
+end
+
+function pred_all(...)
+    local pred_list = table.pack(...)
+    return function(item)
+        for i = 1, pred_list.n do
+            local p = pred_list[i]
+            local r = p(item)
+            log_(LEVEL_VERBOSE, _text, "Checking predicate number", i, "result", r)
+            if not r then
+                return false
+            end
+        end
+        return true
+    end
+end
+
+function pred_any(...)
+    local pred_list = table.pack(...)
+    return function(item)
+        for i = 1, pred_list.n do
+            if pred_list[i](item) then
+                return true
+            end
+        end
+        return false
+    end
+end
+
+function restock_crystals(target)
+    local need_restock = false
+    local can_restock = false
+    for slot = 0, 17 do
+        if Inventory.GetInventoryItemBySlot(InventoryType.Crystals, slot).Count < target then
+            need_restock = true
+            if Inventory.GetInventoryItemBySlot(InventoryType.Crystals, slot).Count > 0 then
+                can_restock = true
+            end
+        end
+    end
+
+    if not need_restock then
+        return true
+    end
+
+    if not can_restock then
+        return false
+    end
+
+    open_addon("InventoryRetainer", "SelectString", true, 0)
+
+    local fully_stocked = true
+    for slot = 0, 17 do
+        if not __restock_crystals(slot, target) then
+            fully_stocked = false
+        end
+    end
+
+    close_addon("InventoryRetainer")
+    return fully_stocked
+end
+
+function __restock_crystals(slot, target)
+    local cur = Inventory.GetInventoryItemBySlot(InventoryType.Crystals, slot).Count
+    if cur >= target then
+        return true
+    end
+    local need = target - cur
+    local avail = Inventory.GetInventoryItemBySlot(InventoryType.RetainerCrystals, slot).Count
+    if avail <= need then
+        if avail > 0 then
+            Inventory.GetInventoryItemBySlot(InventoryType.RetainerCrystals, slot):MoveItemSlot(InventoryType.Crystals)
+        end
+        return avail == need
+    end
+    move_partial_stack(InventoryType.RetainerCrystals, slot, need)
+    return true
+end
+
+function move_partial_stack(src_inv, src_slot, count)
+    if not any_addons_ready("InventoryRetainer") then
+        error("RetainerInvNotOpen", CallerName(false), "Must have the retainer inventory panel open")
+    end
+    local available = Inventory.GetInventoryItemBySlot(src_inv, src_slot).Count
+    if available <= count then
+        error("NotEnoughItems", CallerName(false), "Requested partial move", count, "but slot only has", available)
+    end
+    local menu_entry = "Retrieve Quantity"
+    if list_contains({ InventoryType.Crystals, InventoryType.RetainerCrystals }, src_inv) then
+        menu_entry = "Retrieve from Retainer"
+    end
+    pause_pyes()
+    local inst = cs_instance("FFXIVClientStructs.FFXIV.Client.UI.Agent.AgentInventoryContext")
+    --- just ignore all those extra args, the context menu is completely invalid anyway...
+    inst:OpenForItemSlot(src_inv, src_slot, 0, 0)
+    --- danger zone: if the context menu goes away other than the callback in SelectInList the game will crash...
+    if not SelectInList(menu_entry) then
+        close_addon("AddonContextSub")
+        close_addon("ContextMenu")
+        resume_pyes()
+        return
+    end
+    --- perfectly safe :)
+    wait_any_addons("InputNumeric")
+    SafeCallback("InputNumeric", true, count)
+    resume_pyes()
+end
+
+function move_items(source_inv, dest_inv, pred, count)
+    count = default(count, -1)
+    if source_inv == nil or dest_inv == nil then
+        error("Source and destination inventories must be provided")
+    end
+    if type(source_inv) ~= "table" then
+        source_inv = { source_inv }
+    end
+    if type(dest_inv) ~= "table" then
+        dest_inv = { dest_inv }
+    end
+    pred = default(pred, function() return true end)
+    local source_idx = 1
+    local dest_idx = 1
+    local destinv = nil
+    while source_idx <= #source_inv do
+        local sourceinv = Inventory.GetInventoryContainer(source_inv[source_idx])
+        if sourceinv == nil then
+            error("No inventory", CallerName(false), source_inv[source_idx])
+        else
+            destinv = Inventory.GetInventoryContainer(dest_inv[dest_idx])
+            if destinv == nil then
+                error("No inventory", CallerName(false), dest_inv[dest_idx])
+            end
+            for item in luanet.each(sourceinv.Items) do
+                long_task_delay()
+                if pred(item) then
+                    local need_move = true
+                    while dest_idx <= #dest_inv and need_move do
+                        if destinv.FreeSlots > 0 then
+                            log("Moving", item.ItemId, "from", source_inv[source_idx], "to", dest_inv[dest_idx])
+                            item:MoveItemSlot(dest_inv[dest_idx])
+                            if count > 0 then
+                                count = count - 1
+                                if count == 0 then
+                                    return true -- moved all requested items
+                                end
+                            end
+                            need_move = false
+                        else
+                            log_(LEVEL_INFO, _text, "No space to move item to", dest_inv[dest_idx])
+                            dest_idx = dest_idx + 1
+                            if dest_idx <= #dest_inv then
+                                destinv = Inventory.GetInventoryContainer(dest_inv[dest_idx])
+                                if destinv == nil then
+                                    error("No inventory", CallerName(false), dest_inv[dest_idx])
+                                end
+                            end
+                        end
+                    end
+                    if need_move then
+                        return false -- found an item to move with no space available
+                    end
+                end
+            end
+        end
+        source_idx = source_idx + 1
+    end
+    return count <= 0 -- all items if any were able to be moved
+end
+
+function make_armory_space(amount, armory_slots, allowed_move)
+    armory_slots = default(armory_slots, ALL_ARMORY)
+    local success = true
+    for _, slot in pairs(armory_slots) do
+        local inv = Inventory.GetInventoryContainer(slot)
+        local needed = amount - inv.FreeSlots
+        if needed > 0 then
+            log_(LEVEL_INFO, _text, "Need to move", needed, "items out of armory slot", slot)
+            if not move_items(slot, ALL_INVENTORY, allowed_move, needed) then
+                success = false
+                log_(LEVEL_ERROR, _text, "Couldnt move items out of armory slot", slot)
+            end
+        end
+    end
+    return success
+end
+
+function open_map(map_name, partial_ok)
+    partial_ok = default(partial_ok, false)
+    local ready = false
+    repeat
+        local addon = Addons.GetAddon("SelectIconString")
+        if addon.Ready then
+            title = addon:GetAtkValue(0)
+            if title ~= nil then
+                title = title.ValueString
+            end
+            if title == "Decipher" then
+                ready = true
+            else
+                log_(LEVEL_ERROR, _text, "SelectIconString found with unexpected title:", title)
+                close_addon("SelectIconString")
+            end
+        end
+        if not ready then
+            Actions.ExecuteGeneralAction(19)
+            wait(0.5)
+        end
+    until ready
+    if not SelectInList(map_name, "SelectIconString", partial_ok) then
+        log_(LEVEL_ERROR, _text, "Map", map_name, "not found in map list")
+        return false
+    end
+    wait_any_addons("SelectYesno")
+    close_yes_no(true, map_name)
+    wait_ready(10, 1)
+end
+
+function collect_reward_mail()
+    if not Addons.GetAddon("LetterList").Ready then
+        error("LetterList addon not ready")
+    end
+    wait(1)
+    local count = tonumber(Addons.GetAddon("LetterList"):GetNode(1, 22, 23).Text:match("(.-)/20"))
+    log_(LEVEL_INFO, _text, "Starting to collect reward mail, count:", count)
+    if count == 0 or count == nil then
+        log_(LEVEL_INFO, _text, "Error or no mail")
+        return
+    end
+    repeat
+        open_addon("LetterViewer", "LetterList", true, 0, 0)
+        SafeCallback("LetterViewer", true, 1)
+        repeat wait(.1) until Addons.GetAddon("LetterViewer"):GetNode(1, 32, 2, 3).IsVisible
+        repeat wait(.1) until not Addons.GetAddon("LetterViewer"):GetNode(1, 32, 2, 3).IsVisible
+        wait(.1)
+        SafeCallback("LetterViewer", true, 2)
+        wait_any_addons("SelectYesno")
+        SafeCallback("SelectYesno", true, 0)
+        local l = count
+        repeat
+            wait(.1)
+            count = tonumber(Addons.GetAddon("LetterList"):GetNode(1, 22, 23).Text:match("(.-)/20"))
+        until l ~= count
+        log_(LEVEL_INFO, _text, "Collected reward mail, remaining count:", count)
+        wait(.1)
+    until count == 0
+    close_addon("LetterList")
+end
+--[[
+================================================================================
+  END IMPORT: inventory_buddy.lua
+================================================================================
+]]
+
 import "System"
 
 
@@ -673,6 +1319,7 @@ local STYLIST_IS_BUSY = STYLIST .. '.IsBusy'
 local STYLIST_UPDATE_CURRENT_GEARSET = STYLIST .. '.UpdateCurrentGearset'
 
 function stylist_update_current_gearset()
+    reset_gearset_cache()
     Player.Gearset:Update()
     require_ipc(STYLIST_IS_BUSY, 'System.Boolean', {})
     require_ipc(STYLIST_UPDATE_CURRENT_GEARSET, nil, { 'System.Boolean' })
@@ -685,6 +1332,7 @@ function stylist_update_current_gearset()
 end
 
 function stylist_update_all()
+    reset_gearset_cache()
     local start = os.clock()
     Engines.Native.Run("/stylist all")
     repeat
@@ -868,6 +1516,7 @@ end
 ================================================================================
 ]]
 
+-- Skipped import: inventory_buddy.lua
 
 import 'System.Numerics'
 
@@ -1158,6 +1807,7 @@ function char_homeworld(char)
 end
 
 function change_character(char, world)
+    reset_gearset_cache()
     local ti = ResetTimeout()
     char = char_canonical_name(char)
     world = title_case(default(world, char_homeworld(char)))
@@ -1705,6 +2355,18 @@ local WALK_THRESHOLD = 35
 local FLY_THRESHOLD = 100
 
 
+local function should_fly(dist)
+    --far enough
+    if dist > FLY_THRESHOLD then
+        return true
+    end
+    --already mounted, fly unless were right there
+    if GetCharacterCondition(4) and dist > SPRINT_THRESHOLD then
+        return true
+    end
+    return false
+end
+
 -- TODO: pathfind to get accurate distance, can we do that in a zone were not in?
 -- TODO: Option for flight in zones that allow it
 function smart_path(place_name, x, y, z)
@@ -1920,26 +2582,38 @@ function move_near_point(spot, radius, fly)
     if fly then
         log_(LEVEL_DEBUG, _text, "Looking for mesh point in range", radius, "of", target)
         fly_result = IPC.vnavmesh.NearestPoint(target, radius, radius)
+        if fly_result == nil then
+            log_(LEVEL_DEBUG, _text, "No mesh point found in range", radius, "of", target, "using original target")
+            fly_result = target
+        end
     end
     log_(LEVEL_DEBUG, _text, "Looking for floor point in range", radius, "of", target)
     result = IPC.vnavmesh.PointOnFloor(target, false, radius)
 
-    if result == nil or (fly and fly_result == nil) then
+    if result == nil and (not fly or fly_result == nil) then
         log_(LEVEL_ERROR, _text, "No valid point found in range", radius, "of", spot, "searched from", target)
         return false
     end
     log_(LEVEL_DEBUG, _text, "Found point in area", result, fly_result)
     local path, fly_path
-    if fly_result == nil or Vector3.Distance(Player.Entity.Position, result) < FLY_THRESHOLD then
+    if fly_result == nil or not should_fly(Vector3.Distance(Player.Entity.Position, result)) then
         path = pathfind_with_tolerance(result, false, radius)
     end
-    if fly_result ~= nil and (path == nil or path_length(path) > FLY_THRESHOLD) then
+    if fly_result ~= nil and (path == nil or should_fly(path_length(path))) then
         fly_path = pathfind_with_tolerance(fly_result, true, radius)
-        walk_path(fly_path, true, radius, 0.01, spot)
-    else
+        if fly_path ~= nil then
+            log_(LEVEL_DEBUG, _list, fly_path, "Flying path")
+            walk_path(fly_path, true, radius, 0.01, spot)
+            return true
+        end
+        log_(LEVEL_ERROR, _text, "Should fly, but no valid flying path found")
+    end
+    if path ~= nil then
+        log_(LEVEL_DEBUG, _list, path, "Walking path")
         walk_path(path, false, radius, 0.01, spot)
     end
-    return true
+    log_(LEVEL_ERROR, _text, "No valid path found")
+    return false
 end
 
 function jump_to_point(p, runup, retry)
@@ -2161,7 +2835,12 @@ function pathfind_with_tolerance(vec3, fly, tolerance)
             'System.Single'
         }
     )
-    return await(invoke_ipc('vnavmesh.Nav.PathfindWithTolerance', Player.Entity.Position, vec3, fly, tolerance))
+    res = await(invoke_ipc('vnavmesh.Nav.PathfindWithTolerance', Player.Entity.Position, vec3, fly, tolerance))
+    if res == nil or res.Count == 0 then
+        log_(LEVEL_DEBUG, _text, "No path found to", vec3, "fly:", fly, "tolerance:", tolerance, "res:", res)
+        return nil
+    end
+    return res
 end
 
 function ZoneTransition()
@@ -2383,641 +3062,7 @@ end
 ================================================================================
 ]]
 
---[[
-================================================================================
-  BEGIN IMPORT: inventory_buddy.lua
-================================================================================
-]]
-
--- Skipped import: utils.lua
--- Skipped import: luasharp.lua
-
-
-ALL_INVENTORY = {
-    InventoryType.Inventory1,
-    InventoryType.Inventory2,
-    InventoryType.Inventory3,
-    InventoryType.Inventory4,
-}
-
-NORMAL_SADDLEBAG = {
-    InventoryType.SaddleBag1,
-    InventoryType.SaddleBag2,
-}
-
-PREMIUM_SADDLEBAG = {
-    InventoryType.PremiumSaddleBag1,
-    InventoryType.PremiumSaddleBag2,
-}
-
-ALL_ARMORY = {
-    InventoryType.ArmoryHead,
-    InventoryType.ArmoryBody,
-    InventoryType.ArmoryHands,
-    InventoryType.ArmoryLegs,
-    InventoryType.ArmoryFeets,
-    InventoryType.ArmoryEar,
-    InventoryType.ArmoryNeck,
-    InventoryType.ArmoryWrist,
-    InventoryType.ArmoryRings,
-    InventoryType.ArmoryMainHand,
-    InventoryType.ArmoryOffHand,
-}
-
-ALL_RETAINER = {
-    InventoryType.RetainerPage1,
-    InventoryType.RetainerPage2,
-    InventoryType.RetainerPage3,
-    InventoryType.RetainerPage4,
-    InventoryType.RetainerPage5,
-    InventoryType.RetainerPage6,
-    InventoryType.RetainerPage7,
-}
-
-ALL_EQUIPMENT = {
-    InventoryType.EquippedItems,
-    InventoryType.ArmoryHead,
-    InventoryType.ArmoryBody,
-    InventoryType.ArmoryHands,
-    InventoryType.ArmoryLegs,
-    InventoryType.ArmoryFeets,
-    InventoryType.ArmoryEar,
-    InventoryType.ArmoryNeck,
-    InventoryType.ArmoryWrist,
-    InventoryType.ArmoryRings,
-    InventoryType.ArmoryMainHand,
-    InventoryType.ArmoryOffHand,
-}
-
-NUM_GEARSETS = 100
-
-item_info_list = {
-    -- ARR Maps
-    TimewornLeatherMap = { itemId = 6688, itemName = "Timeworn Leather Map" },
-    TimewornGoatskinMap = { itemId = 6689, itemName = "Timeworn Goatskin Map" },
-    TimewornToadskinMap = { itemId = 6690, itemName = "Timeworn Toadskin Map" },
-    TimewornBoarskinMap = { itemId = 6691, itemName = "Timeworn Boarskin Map" },
-    TimewornPeisteskinMap = { itemId = 6692, itemName = "Timeworn Peisteskin Map" },
-
-    -- Heavensward Maps
-    TimewornArchaeoskinMap = { itemId = 12241, itemName = "Timeworn Archaeoskin Map" },
-    TimewornWyvernskinMap = { itemId = 12242, itemName = "Timeworn Wyvernskin Map" },
-    TimewornDragonskinMap = { itemId = 12243, itemName = "Timeworn Dragonskin Map" },
-
-    -- Stormblood Maps
-    TimewornGaganaskinMap = { itemId = 17835, itemName = "Timeworn Gaganaskin Map" },
-    TimewornGazelleskinMap = { itemId = 17836, itemName = "Timeworn Gazelleskin Map" },
-
-    -- Shadowbringers Maps
-    TimewornGliderskinMap = { itemId = 26744, itemName = "Timeworn Gliderskin Map" },
-    TimewornZonureskinMap = { itemId = 26745, itemName = "Timeworn Zonureskin Map" },
-
-    -- Endwalker Maps
-    TimewornSaigaskinMap = { itemId = 36611, itemName = "Timeworn Saigaskin Map" },
-    TimewornKumbhiraskinMap = { itemId = 36612, itemName = "Timeworn Kumbhiraskin Map" },
-    TimewornOphiotauroskinMap = { itemId = 39591, itemName = "Timeworn Ophiotauroskin Map" },
-
-    -- Dawntrail Maps
-    TimewornLoboskinMap = { itemId = 43556, itemName = "Timeworn Loboskin Map" },
-    TimewornBraaxskinMap = { itemId = 43557, itemName = "Timeworn Br'aaxskin Map" },
-
-
-    -- Raid Utils
-    Moqueca = { itemId = 44178, recipeId = 35926, itemName = "Moqueca" },
-    Grade2GemdraughtofDexterity = { itemId = 44163, recipeId = 35919, itemName = "Grade 2 Gemdraught of Dexterity" },
-    Grade2GemdraughtofIntelligence = { itemId = 44165, recipeId = 35921, itemName = "Grade 2 Gemdraught of Intelligence" },
-
-    SquadronSpiritbondingManual = { itemId = 14951, buffId = 1083, itemName = "Squadron Spiritbonding Manual" },
-    SuperiorSpiritbondPotion = { itemId = 27960, buffId = 49, itemName = "Superior Spiritbond Potion" }, --This is just medicated
-
-
-
-    -- precrafts:
-    SanctifiedWater = { itemId = 44051, recipeId = 5661, itemName = "Sanctified Water" },
-    CoconutMilk = { itemId = 36082, recipeId = 5287, itemName = "Coconut Milk" },
-    TuraliCornOil = { itemId = 43976, recipeId = 5590, itemName = "Turali Corn Oil" },
-
-
-
-    -- Hunt bills
-    EliteMarkBill = { itemId = 2001362, itemName = "Elite Mark Bill" },
-    EliteClanMarkBill = { itemId = 2001703, itemName = "Elite Clan Mark Bill" },
-    EliteVeteranClanMarkBill = { itemId = 2002116, itemName = "Elite Veteran Clan Mark Bill" },
-    EliteClanNutsyMarkBill = { itemId = 2002631, itemName = "Elite Clan Nutsy Mark Bill" },
-    EliteGuildshipMarkBill = { itemId = 2003093, itemName = "Elite Guildship Mark Bill" },
-    EliteDawnHuntBill = { itemId = 2003512, itemName = "Elite Dawn Hunt Bill" },
-}
-
-
-
-function normalize_item_name(name)
-    return name:gsub("%W", "")
-end
-
-function get_item_name_from_id(id)
-    return luminia_row_checked("item", id).Name
-end
-
-function get_item_info(item_name)
-    local item_info = item_info_list[normalize_item_name(item_name)]
-    if item_info == nil then
-        error("No information for item", item_name)
-    end
-    return item_info
-end
-
-function get_item_info_by_id(item_id)
-    for _, item_info in pairs(item_info_list) do
-        if item_info.itemId == item_id then
-            return item_info
-        end
-    end
-end
-
-function venture_count()
-    return Inventory.GetItemCount(21072)
-end
-
-function equip_gearset(gearset_name, update_after)
-    update_after = default(update_after, false)
-    local ti = ResetTimeout()
-    for gs in luanet.each(Player.Gearsets) do
-        if gs.Name == gearset_name then
-            repeat
-                CheckTimeout(10, ti, CallerName(false), "Couldnt equip gearset:", gearset_name)
-                gs:Equip()
-                wait_ready(10, 1)
-            until Player.Gearset.Name == gearset_name
-            log_(LEVEL_INFO, _text, "Gearset", gearset_name, "equipped")
-            if update_after then
-                Player.Gearset:Update()
-            end
-            return true
-        end
-    end
-    log_(LEVEL_ERROR, _text, "Gearset", gearset_name, "not found")
-    return false
-end
-
-function equip_classjob(classjob_abrev, update_after)
-    update_after = default(update_after, false)
-    classjob_abrev = classjob_abrev:upper()
-    local ti = ResetTimeout()
-    for gs in luanet.each(Player.Gearsets) do
-        if luminia_row_checked("ClassJob", gs.ClassJob).Abbreviation == classjob_abrev then
-            gearset_name = gs.Name
-            log_(LEVEL_INFO, _text, "Equipping gearset", gearset_name, "for class/job", classjob_abrev)
-            repeat
-                CheckTimeout(10, ti, CallerName(false), "Couldnt equip gearset:", gearset_name)
-                gs:Equip()
-                wait(0.3)
-                yesno = Addons.GetAddon("SelectYesno")
-                wait(0.3)
-                if yesno.Ready then
-                    close_yes_no(true,
-                        "registered to this gear set could not be found in your Armoury Chest. Replace it with")
-                end
-                wait(0.4)
-            until Player.Gearset.Name == gearset_name
-            wait_ready(10, 1)
-            log_(LEVEL_VERBOSE, _text, "Gearset", gearset_name, "equipped")
-            if update_after then
-                Player.Gearset:Update()
-            end
-            return true
-        end
-    end
-    log_(LEVEL_ERROR, _text, "No gearset found for class/job", classjob_abrev)
-    return false
-end
-
-function move_to_inventory(item)
-    for _, destination in pairs(ALL_INVENTORY) do
-        if Inventory.GetInventoryContainer(destination).FreeSlots > 0 then
-            item:MoveItemSlot(destination)
-            return true
-        end
-    end
-    return false
-end
-
-function item_id_range(lowest_item_id, highest_item_id, in_range)
-    highest_item_id = default(highest_item_id, lowest_item_id)
-    lowest_item_id = default(lowest_item_id, 0)
-    highest_item_id = default(highest_item_id, 999999999)
-    in_range = default(in_range, true)
-    return function(target_item)
-        if lowest_item_id <= target_item.ItemId and target_item.ItemId <= highest_item_id then
-            return in_range
-        end
-        return not in_range
-    end
-end
-
-RaptureGearsetModule_GearsetItemIndex = load_type(
-    "FFXIVClientStructs.FFXIV.Client.UI.Misc.RaptureGearsetModule+GearsetItemIndex")
-
-function current_gearset_index()
-    local RaptureGearsetModule = cs_instance("FFXIVClientStructs.FFXIV.Client.UI.Misc.RaptureGearsetModule")
-    return RaptureGearsetModule.CurrentGearsetIndex
-end
-
-function resolve_gearset_ids(number)
-    RaptureGearsetModule = cs_instance("FFXIVClientStructs.FFXIV.Client.UI.Misc.RaptureGearsetModule")
-    if not RaptureGearsetModule:IsValidGearset(number) then
-        return nil
-    end
-    if RaptureGearsetModule_GearsetEntry == nil then
-        _, RaptureGearsetModule_GearsetEntry = load_type(
-            "FFXIVClientStructs.FFXIV.Client.UI.Misc.RaptureGearsetModule+GearsetEntry")
-    end
-    local gearset_ptr = RaptureGearsetModule:GetGearset(number)
-    if gearset_ptr == nil then
-        return nil
-    end
-    local gs = deref_pointer(gearset_ptr, RaptureGearsetModule_GearsetEntry)
-    function _resolve_gearset_ids__get_item_id(slot)
-        local itemId = gs:GetItem(slot).ItemId
-        if itemId == 0 then
-            return nil
-        end
-        return itemId
-    end
-
-    return {
-        MainHand = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.MainHand),
-        OffHand = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.OffHand),
-        Head = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Head),
-        Body = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Body),
-        Hands = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Hands),
-        Legs = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Legs),
-        Feet = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Feet),
-        Ears = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Ears),
-        Neck = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Neck),
-        Wrists = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.Wrists),
-        LeftRing = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.RingLeft),
-        RightRing = _resolve_gearset_ids__get_item_id(RaptureGearsetModule_GearsetItemIndex.RingRight),
-    }
-end
-
--- dont preserve too long cause it can change, but its a little slow to generate
-_GEARSET_CACHE = {}
-_GEARSET_LAST_UPDATE = os.clock()
-_GEARSET_MISSING_OKAY = false
-
-function resolve_gearset_items(number)
-    if _GEARSET_LAST_UPDATE + 10 <= os.clock() then
-        _GEARSET_CACHE = {}
-        _GEARSET_LAST_UPDATE = os.clock()
-    end
-    if _GEARSET_CACHE[number] == nil then
-        local gearset_ids = resolve_gearset_ids(number)
-        if gearset_ids == nil then
-            return nil
-        end
-        local items = {}
-        for slot, _ in pairs(gearset_ids) do
-            items[slot] = nil
-        end
-        for _, container in pairs(ALL_EQUIPMENT) do
-            local inv = Inventory.GetInventoryContainer(container)
-            for item in luanet.each(inv.Items) do
-                long_task_delay()
-                local itemId = item.ItemId
-                if item.IsHighQuality then
-                    itemId = itemId + 1000000
-                end
-                for slot, gid in pairs(gearset_ids) do
-                    if itemId == gid then
-                        gearset_ids[slot] = nil
-                        items[slot] = item
-                        break
-                    end
-                end
-            end
-        end
-        for slot, gid in pairs(gearset_ids) do
-            if gid ~= nil then
-                log_(LEVEL_ERROR, _text, "Did not find item for slot", slot, "with id", gid, "in gearset", number)
-                if not _GEARSET_MISSING_OKAY then
-                    error("GearsetItemNotFound", CallerName(false), "Did not find item for slot", slot, "with id", gid,
-                        "in gearset", number)
-                end
-            end
-        end
-        _GEARSET_CACHE[number] = items
-    end
-    return _GEARSET_CACHE[number]
-end
-
-function item_in_gearset(in_gearset)
-    in_gearset = default(in_gearset, true)
-    return function(item)
-        for idx = 0, NUM_GEARSETS - 1 do
-            gs = resolve_gearset_items(idx)
-            if gs ~= nil then
-                for _, gsi in pairs(gs) do
-                    if gsi.ItemId == item.ItemId
-                        and gsi.Slot == item.Slot
-                        and gsi.Container == item.Container
-                        and gsi.IsHighQuality == item.IsHighQuality
-                    then
-                        return in_gearset
-                    end
-                end
-            end
-        end
-        return not in_gearset
-    end
-end
-
-function itemid_gs_submittable(itemid)
-    local item_row = luminia_row_checked("item", itemid)
-    return item_row.Rarity > 1 and item_row.EquipSlotCategory.RowId ~= 0
-end
-
-function item_gs_submittable(item)
-    return itemid_gs_submittable(item.ItemId)
-end
-
-function is_item_job(job)
-    return function(item)
-        local cat = luminia_row_checked("item", item.ItemId).ClassJobCategory
-        if cat.RowId == 0 then
-            return nil
-        end
-        return cat[job]
-    end
-end
-
-function max_item_level(max_level)
-    return function(item)
-        local equip_level = luminia_row_checked("item", item.ItemId).LevelEquip
-        return equip_level <= max_level
-    end
-end
-
-function is_item_equip_slot(slot)
-    return function(item)
-        local cat = luminia_row_checked("item", item.ItemId).EquipSlotCategory
-        if cat.RowId == 0 then
-            return nil
-        end
-        return cat[slot] == 1
-    end
-end
-
-function pred_all(...)
-    local pred_list = table.pack(...)
-    return function(item)
-        for i = 1, pred_list.n do
-            local p = pred_list[i]
-            local r = p(item)
-            log_(LEVEL_VERBOSE, _text, "Checking predicate number", i, "result", r)
-            if not r then
-                return false
-            end
-        end
-        return true
-    end
-end
-
-function pred_any(...)
-    local pred_list = table.pack(...)
-    return function(item)
-        for i = 1, pred_list.n do
-            if pred_list[i](item) then
-                return true
-            end
-        end
-        return false
-    end
-end
-
-function restock_crystals(target)
-    local need_restock = false
-    local can_restock = false
-    for slot = 0, 17 do
-        if Inventory.GetInventoryItemBySlot(InventoryType.Crystals, slot).Count < target then
-            need_restock = true
-            if Inventory.GetInventoryItemBySlot(InventoryType.Crystals, slot).Count > 0 then
-                can_restock = true
-            end
-        end
-    end
-
-    if not need_restock then
-        return true
-    end
-
-    if not can_restock then
-        return false
-    end
-
-    open_addon("InventoryRetainer", "SelectString", true, 0)
-
-    local fully_stocked = true
-    for slot = 0, 17 do
-        if not __restock_crystals(slot, target) then
-            fully_stocked = false
-        end
-    end
-
-    close_addon("InventoryRetainer")
-    return fully_stocked
-end
-
-function __restock_crystals(slot, target)
-    local cur = Inventory.GetInventoryItemBySlot(InventoryType.Crystals, slot).Count
-    if cur >= target then
-        return true
-    end
-    local need = target - cur
-    local avail = Inventory.GetInventoryItemBySlot(InventoryType.RetainerCrystals, slot).Count
-    if avail <= need then
-        if avail > 0 then
-            Inventory.GetInventoryItemBySlot(InventoryType.RetainerCrystals, slot):MoveItemSlot(InventoryType.Crystals)
-        end
-        return avail == need
-    end
-    move_partial_stack(InventoryType.RetainerCrystals, slot, need)
-    return true
-end
-
-function move_partial_stack(src_inv, src_slot, count)
-    if not any_addons_ready("InventoryRetainer") then
-        error("RetainerInvNotOpen", CallerName(false), "Must have the retainer inventory panel open")
-    end
-    local available = Inventory.GetInventoryItemBySlot(src_inv, src_slot).Count
-    if available <= count then
-        error("NotEnoughItems", CallerName(false), "Requested partial move", count, "but slot only has", available)
-    end
-    local menu_entry = "Retrieve Quantity"
-    if list_contains({ InventoryType.Crystals, InventoryType.RetainerCrystals }, src_inv) then
-        menu_entry = "Retrieve from Retainer"
-    end
-    pause_pyes()
-    local inst = cs_instance("FFXIVClientStructs.FFXIV.Client.UI.Agent.AgentInventoryContext")
-    --- just ignore all those extra args, the context menu is completely invalid anyway...
-    inst:OpenForItemSlot(src_inv, src_slot, 0, 0)
-    --- danger zone: if the context menu goes away other than the callback in SelectInList the game will crash...
-    if not SelectInList(menu_entry) then
-        close_addon("AddonContextSub")
-        close_addon("ContextMenu")
-        resume_pyes()
-        return
-    end
-    --- perfectly safe :)
-    wait_any_addons("InputNumeric")
-    SafeCallback("InputNumeric", true, count)
-    resume_pyes()
-end
-
-function move_items(source_inv, dest_inv, pred, count)
-    count = default(count, -1)
-    if source_inv == nil or dest_inv == nil then
-        error("Source and destination inventories must be provided")
-    end
-    if type(source_inv) ~= "table" then
-        source_inv = { source_inv }
-    end
-    if type(dest_inv) ~= "table" then
-        dest_inv = { dest_inv }
-    end
-    pred = default(pred, function() return true end)
-    local source_idx = 1
-    local dest_idx = 1
-    local destinv = nil
-    while source_idx <= #source_inv do
-        local sourceinv = Inventory.GetInventoryContainer(source_inv[source_idx])
-        if sourceinv == nil then
-            error("No inventory", CallerName(false), source_inv[source_idx])
-        else
-            destinv = Inventory.GetInventoryContainer(dest_inv[dest_idx])
-            if destinv == nil then
-                error("No inventory", CallerName(false), dest_inv[dest_idx])
-            end
-            for item in luanet.each(sourceinv.Items) do
-                long_task_delay()
-                if pred(item) then
-                    local need_move = true
-                    while dest_idx <= #dest_inv and need_move do
-                        if destinv.FreeSlots > 0 then
-                            log("Moving", item.ItemId, "from", source_inv[source_idx], "to", dest_inv[dest_idx])
-                            item:MoveItemSlot(dest_inv[dest_idx])
-                            if count > 0 then
-                                count = count - 1
-                                if count == 0 then
-                                    return true -- moved all requested items
-                                end
-                            end
-                            need_move = false
-                        else
-                            log_(LEVEL_INFO, _text, "No space to move item to", dest_inv[dest_idx])
-                            dest_idx = dest_idx + 1
-                            if dest_idx <= #dest_inv then
-                                destinv = Inventory.GetInventoryContainer(dest_inv[dest_idx])
-                                if destinv == nil then
-                                    error("No inventory", CallerName(false), dest_inv[dest_idx])
-                                end
-                            end
-                        end
-                    end
-                    if need_move then
-                        return false -- found an item to move with no space available
-                    end
-                end
-            end
-        end
-        source_idx = source_idx + 1
-    end
-    return count <= 0 -- all items if any were able to be moved
-end
-
-function make_armory_space(amount, armory_slots, allowed_move)
-    armory_slots = default(armory_slots, ALL_ARMORY)
-    local success = true
-    for _, slot in pairs(armory_slots) do
-        local inv = Inventory.GetInventoryContainer(slot)
-        local needed = amount - inv.FreeSlots
-        if needed > 0 then
-            log_(LEVEL_INFO, _text, "Need to move", needed, "items out of armory slot", slot)
-            if not move_items(slot, ALL_INVENTORY, allowed_move, needed) then
-                success = false
-                log_(LEVEL_ERROR, _text, "Couldnt move items out of armory slot", slot)
-            end
-        end
-    end
-    return success
-end
-
-function open_map(map_name, partial_ok)
-    partial_ok = default(partial_ok, false)
-    local ready = false
-    repeat
-        local addon = Addons.GetAddon("SelectIconString")
-        if addon.Ready then
-            title = addon:GetAtkValue(0)
-            if title ~= nil then
-                title = title.ValueString
-            end
-            if title == "Decipher" then
-                ready = true
-            else
-                log_(LEVEL_ERROR, _text, "SelectIconString found with unexpected title:", title)
-                close_addon("SelectIconString")
-            end
-        end
-        if not ready then
-            Actions.ExecuteGeneralAction(19)
-            wait(0.5)
-        end
-    until ready
-    if not SelectInList(map_name, "SelectIconString", partial_ok) then
-        log_(LEVEL_ERROR, _text, "Map", map_name, "not found in map list")
-        return false
-    end
-    wait_any_addons("SelectYesno")
-    close_yes_no(true, map_name)
-    wait_ready(10, 1)
-end
-
-function collect_reward_mail()
-    if not Addons.GetAddon("LetterList").Ready then
-        error("LetterList addon not ready")
-    end
-    wait(1)
-    local count = tonumber(Addons.GetAddon("LetterList"):GetNode(1, 22, 23).Text:match("(.-)/20"))
-    log_(LEVEL_INFO, _text, "Starting to collect reward mail, count:", count)
-    if count == 0 or count == nil then
-        log_(LEVEL_INFO, _text, "Error or no mail")
-        return
-    end
-    repeat
-        open_addon("LetterViewer", "LetterList", true, 0, 0)
-        SafeCallback("LetterViewer", true, 1)
-        repeat wait(.1) until Addons.GetAddon("LetterViewer"):GetNode(1, 32, 2, 3).IsVisible
-        repeat wait(.1) until not Addons.GetAddon("LetterViewer"):GetNode(1, 32, 2, 3).IsVisible
-        wait(.1)
-        SafeCallback("LetterViewer", true, 2)
-        wait_any_addons("SelectYesno")
-        SafeCallback("SelectYesno", true, 0)
-        local l = count
-        repeat
-            wait(.1)
-            count = tonumber(Addons.GetAddon("LetterList"):GetNode(1, 22, 23).Text:match("(.-)/20"))
-        until l ~= count
-        log_(LEVEL_INFO, _text, "Collected reward mail, remaining count:", count)
-        wait(.1)
-    until count == 0
-    close_addon("LetterList")
-end
---[[
-================================================================================
-  END IMPORT: inventory_buddy.lua
-================================================================================
-]]
-
+-- Skipped import: inventory_buddy.lua
 
 
 -- Cool NPCs
