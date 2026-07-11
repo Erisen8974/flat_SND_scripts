@@ -114,11 +114,11 @@ end
 function GetNodeText(name, ...)
     local a = Addons.GetAddon(name)
     if not a.Ready then
-        error("Bad addon", CallerName(false), name)
+        error("Bad addon", name)
     end
     local n = a:GetNode(...)
     if tostring(n.NodeType):find("Text:") == nil then
-        error("Not a text node", CallerName(false), "NodeType:", n.NodeType, "NodeId:", n.Id, name, ...)
+        error("Not a text node", "NodeType:", n.NodeType, "NodeId:", n.Id, name, ...)
     end
     return n.Text
 end
@@ -175,7 +175,7 @@ function await(o, max_wait)
     max_wait = default(max_wait, 30)
     local ti = ResetTimeout()
     while not o.IsCompleted do
-        CheckTimeout(max_wait, ti, CallerName(false), "Waiting for task to complete")
+        CheckTimeout(max_wait, ti, "Waiting for task to complete")
         wait(0.1)
     end
     return o.Result
@@ -220,7 +220,7 @@ function make_instance_args(ctype, args_table)
     if arg_array == instance then
         log_(LEVEL_CRITICAL, _array, args)
         log_(LEVEL_CRITICAL, _array, arg_array)
-        error("Failed to make instance", CallerName(false), "type:", ctype, "args:", args)
+        error("Failed to make instance", "type:", ctype, "args:", args)
     end
     return instance
 end
@@ -231,12 +231,12 @@ function deref_pointer(ptr, ctype)
     end
     local AsRef = get_generic_method(Unsafe, "AsRef", { ctype })
     if AsRef == nil or AsRef.Invoke == nil then
-        error("Failed to get AsRef method", CallerName(false), "ctype:", ctype)
+        error("Failed to get AsRef method", "ctype:", ctype)
     end
     local arg = luanet.make_array(Object, { ptr })
     local ref = AsRef:Invoke(nil, arg)
     if ref == arg then
-        error("Failed to deref pointer", CallerName(false), "pointer:", ptr, "ctype:", ctype)
+        error("Failed to deref pointer", "pointer:", ptr, "ctype:", ctype)
     end
     return ref
 end
@@ -263,12 +263,12 @@ function _field(o, field, ...)
     if f == nil then
         f = get_property(t, field, { private = true, static = true }, false)
         if f == nil then
-            error("field or property not found", CallerName(false), o, field)
+            error("field or property not found", o, field)
         end
     end
     local res = f:GetValue(o)
     if res == o then
-        error("could not get value", CallerName(false), o, field)
+        error("could not get value", o, field)
     end
     return _field(res, ...)
 end
@@ -293,7 +293,7 @@ function get_plugin_raw(plugin_name, required, need_loaded)
         end
     end
     if required then
-        error("Plugin not found", CallerName(false), plugin_name)
+        error("Plugin not found", plugin_name)
     end
 end
 
@@ -324,25 +324,25 @@ function load_type_(type_path, assembly)
     for i in luanet.each(AppDomain.CurrentDomain:GetAssemblies()) do
         if i.FullName:match(assembly .. ",") then
             if assembly_handle ~= nil then
-                StopScript("Multiple assemblies found matching name", CallerName(false), "assembly:", assembly)
+                StopScript("Multiple assemblies found matching name", "assembly:", assembly)
             end
             assembly_handle = i
         end
     end
     if assembly_handle == nil then
-        StopScript("Assembly not found", CallerName(false), "assembly:", assembly)
+        StopScript("Assembly not found", "assembly:", assembly)
     end
     local type_found = nil
     for i in luanet.each(assembly_handle.ExportedTypes) do
         if i.FullName == type_path then
             if type_found ~= nil then
-                StopScript("Multiple types found matching name", CallerName(false), "type_path:", type_path)
+                StopScript("Multiple types found matching name", "type_path:", type_path)
             end
             type_found = i
         end
     end
     if type_found == nil then
-        StopScript("Type not found", CallerName(false), "type_path:", type_path)
+        StopScript("Type not found", "type_path:", type_path)
     end
     return type_found
 end
@@ -351,7 +351,7 @@ end
 function get_method(type, method_name, binding)
     local method = type:GetMethod(method_name, make_binding_flags(binding))
     if method == nil then
-        error("Method not found", CallerName(false), "type:", type, "method_name:", method_name)
+        error("Method not found", "type:", type, "method_name:", method_name)
     end
     return method
 end
@@ -361,7 +361,7 @@ function get_field(type, field_name, binding, required)
     local field = type:GetField(field_name, make_binding_flags(binding))
     if field == nil then
         if required then
-            error("Field not found", CallerName(false), "type:", type, "field_name:", field_name)
+            error("Field not found", "type:", type, "field_name:", field_name)
         end
         return nil
     end
@@ -373,7 +373,7 @@ function get_property(type, property_name, binding, required)
     local property = type:GetProperty(property_name, make_binding_flags(binding))
     if property == nil then
         if required then
-            error("Property not found", CallerName(false), "type:", type, "property_name:", property_name)
+            error("Property not found", "type:", type, "property_name:", property_name)
         end
         return nil
     end
@@ -511,7 +511,7 @@ function get_generic_method(targetType, method_name, genericTypes)
             return m:MakeGenericMethod(genericArgsArr)
         end
     end
-    error("No generic method found", CallerName(false), "No matching generic method found for", method_name, "with",
+    error("No generic method found", "No matching generic method found for", method_name, "with",
         #genericTypes, "generic args")
 end
 
@@ -535,7 +535,7 @@ function get_method_overload(targetType, method_name, paramTypes)
             end
         end
     end
-    error("No method overload found", CallerName(false), "No matching overload found for", method_name, "with",
+    error("No method overload found", "No matching overload found for", method_name, "with",
         #paramTypes, "parameters")
 end
 --[[
@@ -560,18 +560,18 @@ function require_ipc(ipc_signature, result_type, arg_types)
     arg_types[#arg_types + 1] = default(result_type, 'System.Object')
     for i, v in pairs(arg_types) do
         if type(v) ~= 'string' then
-            error("Bad argument", CallerName(false), "argument types shound be strings")
+            error("Bad argument", "argument types should be strings")
         end
         arg_types[i] = Type.GetType(v)
     end
     local method = get_generic_method(Svc.PluginInterface:GetType(), 'GetIpcSubscriber', arg_types)
     if method.Invoke == nil then
-        error("GetIpcSubscriber not found", CallerName(false), "No IPC subscriber for", #arg_types, "arguments")
+        error("GetIpcSubscriber not found", "No IPC subscriber for", #arg_types, "arguments")
     end
     local sig = luanet.make_array(Object, { ipc_signature })
     local subscriber = method:Invoke(Svc.PluginInterface, sig)
     if subscriber == nil then
-        error("IPC not found", CallerName(false), "signature:", ipc_signature)
+        error("IPC not found", "signature:", ipc_signature)
     end
     if result_type == nil then
         log_(LEVEL_DEBUG, _text, "loaded action IPC", ipc_signature)
@@ -586,12 +586,12 @@ function invoke_ipc(ipc_signature, ...)
     local function_subscriber = ipc_cache_functions[ipc_signature]
     local action_subscriber = ipc_cache_actions[ipc_signature]
     if function_subscriber == nil and action_subscriber == nil then
-        error("IPC not ready", CallerName(false), "signature:", ipc_signature, "is not loaded")
+        error("IPC not ready", "signature:", ipc_signature, "is not loaded")
     end
     if function_subscriber ~= nil then
         local result = function_subscriber:InvokeFunc(...)
         if result == function_subscriber then
-            error("Function IPC failed", CallerName(false), "signature:", ipc_signature)
+            error("Function IPC failed", "signature:", ipc_signature)
         end
         return result
     end
@@ -599,7 +599,7 @@ function invoke_ipc(ipc_signature, ...)
 
     local result = action_subscriber:InvokeAction(...)
     if result == action_subscriber then
-        error("IPC failed", CallerName(false), "signature:", ipc_signature)
+        error("IPC failed", "signature:", ipc_signature)
     end
 end
 
@@ -797,7 +797,7 @@ function equip_gearset(gearset_name, update_after)
     for gs in luanet.each(Player.Gearsets) do
         if gs.Name == gearset_name then
             repeat
-                CheckTimeout(10, ti, CallerName(false), "Couldnt equip gearset:", gearset_name)
+                CheckTimeout(10, ti, "Couldnt equip gearset:", gearset_name)
                 gs:Equip()
                 wait_ready(10, 1)
             until Player.Gearset.Name == gearset_name
@@ -821,7 +821,7 @@ function equip_classjob(classjob_abrev, update_after)
             gearset_name = gs.Name
             log_(LEVEL_INFO, _text, "Equipping gearset", gearset_name, "for class/job", classjob_abrev)
             repeat
-                CheckTimeout(10, ti, CallerName(false), "Couldnt equip gearset:", gearset_name)
+                CheckTimeout(10, ti, "Couldnt equip gearset:", gearset_name)
                 gs:Equip()
                 wait(0.3)
                 yesno = Addons.GetAddon("SelectYesno")
@@ -964,7 +964,7 @@ function resolve_gearset_items(number)
             if gid ~= nil then
                 log_(LEVEL_ERROR, _text, "Did not find item for slot", slot, "with id", gid, "in gearset", number)
                 if not _GEARSET_MISSING_OKAY then
-                    error("GearsetItemNotFound", CallerName(false), "Did not find item for slot", slot, "with id", gid,
+                    error("GearsetItemNotFound", "Did not find item for slot", slot, "with id", gid,
                         "in gearset", number)
                 end
             end
@@ -1110,11 +1110,11 @@ end
 
 function move_partial_stack(src_inv, src_slot, count)
     if not any_addons_ready("InventoryRetainer") then
-        error("RetainerInvNotOpen", CallerName(false), "Must have the retainer inventory panel open")
+        error("RetainerInvNotOpen", "Must have the retainer inventory panel open")
     end
     local available = Inventory.GetInventoryItemBySlot(src_inv, src_slot).Count
     if available <= count then
-        error("NotEnoughItems", CallerName(false), "Requested partial move", count, "but slot only has", available)
+        error("NotEnoughItems", "Requested partial move", count, "but slot only has", available)
     end
     local menu_entry = "Retrieve Quantity"
     if list_contains({ InventoryType.Crystals, InventoryType.RetainerCrystals }, src_inv) then
@@ -1155,11 +1155,11 @@ function move_items(source_inv, dest_inv, pred, count)
     while source_idx <= #source_inv do
         local sourceinv = Inventory.GetInventoryContainer(source_inv[source_idx])
         if sourceinv == nil then
-            error("No inventory", CallerName(false), source_inv[source_idx])
+            error("No inventory", source_inv[source_idx])
         else
             destinv = Inventory.GetInventoryContainer(dest_inv[dest_idx])
             if destinv == nil then
-                error("No inventory", CallerName(false), dest_inv[dest_idx])
+                error("No inventory", dest_inv[dest_idx])
             end
             for item in luanet.each(sourceinv.Items) do
                 long_task_delay()
@@ -1182,7 +1182,7 @@ function move_items(source_inv, dest_inv, pred, count)
                             if dest_idx <= #dest_inv then
                                 destinv = Inventory.GetInventoryContainer(dest_inv[dest_idx])
                                 if destinv == nil then
-                                    error("No inventory", CallerName(false), dest_inv[dest_idx])
+                                    error("No inventory", dest_inv[dest_idx])
                                 end
                             end
                         end
@@ -1276,6 +1276,34 @@ function collect_reward_mail()
     until count == 0
     close_addon("LetterList")
 end
+
+function entrust_glamours()
+    lifestream_command_blocking("inn")
+    local p1 = Entity.GetEntityByName("Armoire")
+    if p1 == nil then
+        error("Armoire Missing", "Couldn't find Armoire entity")
+    end
+    p1 = p1.Position
+    if p1 == nil then
+        error("Armoire Missing", "Couldn't find Armoire entity position")
+    end
+    local p2 = Entity.GetEntityByName("Glamour Dresser")
+    if p2 == nil then
+        error("Glamour Dresser Missing", "Couldn't find Glamour Dresser entity")
+    end
+    p2 = p2.Position
+    if p2 == nil then
+        error("Glamour Dresser Missing", "Couldn't find Glamour Dresser entity position")
+    end
+    local mid = (p1 + p2) / 2
+    move_near_point(mid, 2)
+    OpenShop('Armoire', 'Cabinet', { SelectString = { 0 } })
+    glamourlog_block('store', 5)
+    close_addons({ 'Cabinet' })
+    OpenShop('Glamour Dresser', 'MiragePrismPrismBox', {})
+    glamourlog_block('store', 5)
+    close_addons({ 'MiragePrismPrismBox' })
+end
 --[[
 ================================================================================
   END IMPORT: inventory_buddy.lua
@@ -1306,7 +1334,7 @@ function wait_gbr_idle(max_wait)
     end
     repeat
         if ti ~= nil then
-            CheckTimeout(max_wait, ti, CallerName(), "wait_gbr_idle timed out")
+            CheckTimeout(max_wait, ti, "wait_gbr_idle timed out")
         end
         wait(1)
         local waiting = invoke_ipc(GBR_WAITING)
@@ -1326,7 +1354,7 @@ function stylist_update_current_gearset()
     local ti = ResetTimeout()
     invoke_ipc(STYLIST_UPDATE_CURRENT_GEARSET, true)
     repeat
-        CheckTimeout(30, ti, CallerName(), "Stylist is busy")
+        CheckTimeout(30, ti, "Stylist is busy")
         wait(0.5)
     until not invoke_ipc(STYLIST_IS_BUSY)
 end
@@ -1653,7 +1681,7 @@ function wait_message(after, timeout, ...)
     timeout = default(timeout, 10)
     wait_any_addons("ChatLogPanel_3")
     repeat
-        CheckTimeout(timeout, ti, CallerName(false), "Waiting for message '" .. after .. "' followed by", ...)
+        CheckTimeout(timeout, ti, "Waiting for message '" .. after .. "' followed by", ...)
         wait(.1)
         for i = 1, #messages do
             if find_after(get_chat_messages(3), messages[i], after) then
@@ -1667,7 +1695,7 @@ function open_addon(addon, base_addon, ...)
     wait_any_addons(base_addon)
     local ti = ResetTimeout()
     while not IsAddonReady(addon) do
-        CheckTimeout(3, ti, CallerName(false), "Opening addon", addon)
+        CheckTimeout(3, ti, "Opening addon", addon)
         SafeCallback(base_addon, ...)
         wait(0.1)
     end
@@ -1676,7 +1704,7 @@ end
 function confirm_addon(addon, ...)
     local ti = ResetTimeout()
     while IsAddonReady(addon) do
-        CheckTimeout(3, ti, CallerName(false), "Confirming addon", addon)
+        CheckTimeout(3, ti, "Confirming addon", addon)
         SafeCallback(addon, ...)
         wait(0.1)
     end
@@ -1686,7 +1714,7 @@ function talk(who, what_addon)
     what_addon = default(what_addon, "SelectString")
     local ti = ResetTimeout()
     repeat
-        CheckTimeout(10, ti, CallerName(false), "Talking to", who, "to open addon", what_addon)
+        CheckTimeout(10, ti, "Talking to", who, "to open addon", what_addon)
         local entity = get_closest_entity(who)
         entity:SetAsTarget()
         entity:Interact()
@@ -1706,7 +1734,7 @@ function close_yes_no(accept, expected_text, mandatory)
             if node == nil or not node:upper():find(expected_text:upper()) then
                 log_(LEVEL_DEBUG, _text, "Expected yesno text '" .. expected_text .. "' didn't match actual text:", node)
                 if mandatory then
-                    error("Wrong yesno", CallerName(false), "Expected yesno text", expected_text,
+                    error("Wrong yesno", "Expected yesno text", expected_text,
                         "did not match actual text", node)
                 end
                 return
@@ -1724,7 +1752,7 @@ function close_talk(first, ...)
     local ti = ResetTimeout()
     while (first ~= nil and not any_addons_ready(first, ...)) or (first == nil and GetCharacterCondition(32)) do
         yield("/click Talk Click")
-        CheckTimeout(60, ti, CallerName(false), "Finishing talking")
+        CheckTimeout(60, ti, "Finishing talking")
         wait(.1)
     end
 end
@@ -1732,7 +1760,7 @@ end
 function close_addon(addon)
     local ti = ResetTimeout()
     while IsAddonReady(addon) do
-        CheckTimeout(1, ti, CallerName(false), "Closing addon", addon)
+        CheckTimeout(1, ti, "Closing addon", addon)
         SafeCallback(addon, true, -1)
         wait(0)
     end
@@ -1755,7 +1783,7 @@ function wait_any_addons(...)
         if ready ~= nil then
             return ready
         end
-        CheckTimeout(30, ti, CallerName(false), "Waiting for addons", ...)
+        CheckTimeout(30, ti, "Waiting for addons", ...)
         wait(0.1)
     end
 end
@@ -1897,7 +1925,7 @@ function wait_ready(max_wait, seconds_ready, stationary, interval)
     end
     repeat
         if ti ~= nil then
-            CheckTimeout(max_wait, ti, CallerName(), "wait_ready timed out with ready time", os.clock() - ready_time,
+            CheckTimeout(max_wait, ti, "wait_ready timed out with ready time", os.clock() - ready_time,
                 "and target", seconds_ready)
         end
         wait(interval)
@@ -1933,11 +1961,11 @@ end
 function luminia_row_checked(table, id)
     local sheet = Excel.GetSheet(table)
     if sheet == nil then
-        error("Unknown sheet", CallerName(false), "sheet not found for", table)
+        error("Unknown sheet", "sheet not found for", table)
     end
     local row = sheet:GetRow(id)
     if row == nil then
-        error("Unknown id", CallerName(false), "Id not found in excel data", table, id)
+        error("Unknown id", "Id not found in excel data", table, id)
     end
     return row
 end
@@ -1945,11 +1973,11 @@ end
 function atk_data_checked(addon, index)
     local w = Addons.GetAddon(addon)
     if not (w.Exists and w.Ready) then
-        error("No addon", CallerName(false), "addon", addon, "not ready")
+        error("No addon", "addon", addon, "not ready")
     end
     local r = w:GetAtkValue(index)
     if r == nil then
-        error("Bad atk index", CallerName(false), "addon", addon, "does not have index", index)
+        error("Bad atk index", "addon", addon, "does not have index", index)
     end
     return r.ValueString
 end
@@ -1972,7 +2000,7 @@ end
 function GetListElement(menu, index)
     local a = Addons.GetAddon(menu)
     if not a.Ready then
-        error("Bad addon", CallerName(false), menu)
+        error("Bad addon", menu)
     end
     local n = nil
     if menu == "ContextMenu" then
@@ -1982,11 +2010,11 @@ function GetListElement(menu, index)
     elseif menu == "SelectString" or menu == "SelectIconString" then
         n = a:GetNode(1, 3, list_index(5, index), 2)
     else
-        error("Unknown addon", CallerName(false), menu)
+        error("Unknown addon", menu)
     end
     if tostring(n.NodeType):find("Text:") == nil then
-        log_(LEVEL_DEBUG, _text, "Not a text node", CallerName(false), "NodeType:", n.NodeType, "NodeId:", n.Id,
-            menu, index)
+        log_(LEVEL_DEBUG, _text, "Not a text node", "NodeType:", n.NodeType, "NodeId:", n.Id, menu, index)
+        log_call_trace(LEVEL_DEBUG)
         return nil
     end
     return n.Text
@@ -2145,7 +2173,7 @@ function string_to_bool(str, truey_values, falsey_values)
             return false
         end
     end
-    error("InvalidBooleanString", CallerName(false), str)
+    error("InvalidBooleanString", str)
 end
 
 --------------------
@@ -2168,13 +2196,11 @@ function require_plugins(plugins)
         end
     end
     if #plugins > 0 then
-        error("Missing required plugins", CallerName(false), "Missing plugins:", table.concat(plugins, ", "))
+        error("Missing required plugins", "Missing plugins:", table.concat(plugins, ", "))
     end
 end
 
-function error(message, caller, ...)
-    caller = default(caller, CallerName())
-    log("Fatal error " .. message .. " in " .. caller .. ": ", ...)
+function error(message, ...)
     if default(running_questy, false) then
         yield("/qst stop")
     end
@@ -2193,43 +2219,40 @@ function error(message, caller, ...)
         end
     end
     release_shared_data()
-    luanet.error(_text(message, ...))
+    log("Fatal error:", message, ...)
+    log_call_trace(LEVEL_INFO, 1)
+    luanet.error(_text(message))
 end
 
 NO_CALL_INFO = false
 
-function CallerName(string)
+function log_call_trace(log_level, skip_count)
     if NO_CALL_INFO then
-        return "(unknown caller)"
+        log_(LEVEL_INFO, _text, "Trace disabled")
+        return
     end
-    string = default(string, true)
-    local info = debug.getinfo(3)
-    if info == nil then
-        return "(unknown caller)"
+    log_level = default(log_level, LEVEL_VERBOSE)
+    skip_count = default(skip_count, 0)
+    local level = 2 + skip_count -- 0 is getinfo, 1 is this function, 2 is the caller
+    while true do
+        local info = debug.getinfo(level)
+        if info == nil then
+            break
+        end
+        log_(log_level, _text, debug_info_tostring(info, true))
+        level = level + 1
     end
-    return debug_info_tostring(info, string)
-end
-
-function FunctionInfo(string)
-    if NO_CALL_INFO then
-        return "(unknown function)"
-    end
-    string = default(string, true)
-    local info = debug.getinfo(2)
-    if info == nil then
-        return "(unknown function)"
-    end
-    return debug_info_tostring(info, string)
 end
 
 function debug_info_tostring(debug_info, always_string)
+    log_(LEVEL_VERBOSE, _table, debug_info, "Raw debug info")
     string = default(string, true)
     local caller = debug_info.name
     if caller == nil and not always_string then
         return nil
     end
     local file = debug_info.short_src:gsub('.*\\', '') .. ":" .. debug_info.currentline
-    return tostring(caller) .. "(" .. file .. ")"
+    return _text(default(caller, "<anonymous>"), "in", file)
 end
 
 function caller_test()
@@ -2237,7 +2260,7 @@ function caller_test()
 end
 
 function test2()
-    log(CallerName())
+    error("Test error", "This is a test error")
 end
 
 --------------------
@@ -2331,31 +2354,28 @@ function ResetTimeout()
     return os.clock()
 end
 
-function CheckTimeout(max_duration, wait_info, context, ...)
+function CheckTimeout(max_duration, wait_info, ...)
     if wait_info == nil then
-        error("wait_info is nil", CallerName(false), "Must be initialized with ResetTimeout()", "context:",
-            default(context, CallerName(false)), ...)
+        error("wait_info is nil", "Must be initialized with ResetTimeout()", ...)
     end
     if max_duration == nil then
-        error("max_duration is nil", CallerName(false), "Must be provided", "context:",
-            default(context, CallerName(false)), ...)
+        error("max_duration is nil", "Must be provided", ...)
     end
     if os.clock() > wait_info + max_duration then
-        error("Max duration reached", default(context, CallerName(false)), ...)
+        error("Max duration reached", ...)
     end
 end
 
-function AlertTimeout(max_duration, wait_info, context, ...)
+function AlertTimeout(max_duration, wait_info, ...)
     if wait_info == nil then
-        error("wait_info is nil", CallerName(false), "Must be initialized with ResetTimeout()", "context:",
-            default(context, CallerName(false)), ...)
+        error("wait_info is nil", "Must be initialized with ResetTimeout()", ...)
     end
     if max_duration == nil then
-        error("max_duration is nil", CallerName(false), "Must be provided", "context:",
-            default(context, CallerName(false)), ...)
+        error("max_duration is nil", "Must be provided", ...)
     end
     if os.clock() > wait_info + max_duration then
-        log("Max duration reached", default(context, CallerName(false)), ...)
+        log("Max duration reached", ...)
+        log_call_trace()
         return true
     end
     return false
@@ -2444,7 +2464,7 @@ function smart_path(place_name, x, y, z)
                 WalkTo(x, y, z)
                 return
             end
-            error("NoRoute", CallerName(false), "Could not find any aether crystals or shards in", place_name)
+            error("NoRoute", "Could not find any aether crystals or shards in", place_name)
         end
         log_(LEVEL_INFO, _text, "No shard, using main crystal to", nearest_main.TerritoryName, "via", nearest_main.Name)
         TownPath(nearest_main.Name, x, y, z, nil, nearest_main.TerritoryName)
@@ -2594,7 +2614,7 @@ function warp_near_point(spot, radius, territory_id, fly)
     if Svc.ClientState.TerritoryType ~= territory_id then
         local a = nearest_aetherite(territory_id, spot)
         if a == nil then
-            error("NoAetheryte", CallerName(false), "No aetherite found for", territory_id)
+            error("NoAetheryte", "No aetherite found for", territory_id)
         end
         repeat
             Instances.Telepo:Teleport(a.AetherId, 0) -- IDK what the sub index is. if things break its probably that.
@@ -2681,7 +2701,7 @@ function jump_to_point(p, runup, retry)
         end
     until Vector3.Distance(Player.Entity.Position, start_pos) > runup or not IPC.vnavmesh.IsRunning()
     if not IPC.vnavmesh.IsRunning() then
-        error("Failed to jump", CallerName(false), "to point", p)
+        error("Failed to jump", "to point", p)
     end
     Actions.ExecuteGeneralAction(2)
     local retries = 0
@@ -2696,7 +2716,7 @@ function jump_to_point(p, runup, retry)
                     retries = retries + 1
                     Actions.ExecuteGeneralAction(2)
                 else
-                    error("Stuck during jump", CallerName(false), "to point", p, "Landed at", Player.Entity
+                    error("Stuck during jump", "to point", p, "Landed at", Player.Entity
                         .Position)
                 end
             end
@@ -2706,14 +2726,14 @@ function jump_to_point(p, runup, retry)
         end
     end
     if Vector3.Distance(Player.Entity.Position, p) > 3.0 then
-        error("Missed jump", CallerName(false), "to point", p, "Landed at", Player.Entity.Position)
+        error("Missed jump", "to point", p, "Landed at", Player.Entity.Position)
     end
     custom_path(false, { p })
     while IPC.vnavmesh.IsRunning() or Player.IsBusy do
         wait(0.1)
     end
     if Vector3.Distance(Player.Entity.Position, p) > 3.0 then
-        error("Fell during reposition", CallerName(false), "to point", p, "Landed at", Player.Entity.Position)
+        error("Fell during reposition", "to point", p, "Landed at", Player.Entity.Position)
     end
 end
 
@@ -2729,7 +2749,7 @@ function move_to_point(p)
             if stuck == nil then
                 stuck = os.clock()
             elseif os.clock() - stuck > .25 then
-                error("Stuck during walk", CallerName(false), "to point", p, "Landed at", Player.Entity.Position)
+                error("Stuck during walk", "to point", p, "Landed at", Player.Entity.Position)
             end
         else
             last_pos = Player.Entity.Position
@@ -2751,7 +2771,7 @@ function walk_path(path, fly, range, stop_if_stuck, ref_point, max_stuck_time)
     end
     local last_pos
     while (IPC.vnavmesh.IsRunning() or IPC.vnavmesh.PathfindInProgress()) do
-        CheckTimeout(60, ti, CallerName(false), "Waiting for pathfind")
+        CheckTimeout(60, ti, "Waiting for pathfind")
         local cur_pos = Player.Entity.Position
         if range ~= nil and Vector3.Distance(cur_pos, ref_point) <= range then
             IPC.vnavmesh.Stop()
@@ -2805,7 +2825,7 @@ function custom_path(fly, waypoints)
         elseif type(waypoint) == "userdata" then -- it better be a vector3
             vec_waypoints[i] = waypoint
         else
-            error("Invalid waypoint type", CallerName(false), "Type:", type(waypoint))
+            error("Invalid waypoint type", "Type:", type(waypoint))
         end
     end
     log_(LEVEL_DEBUG, _text, "Calling moveto")
@@ -2821,7 +2841,7 @@ function xyz_to_vec3(x, y, z)
         log_(LEVEL_VERBOSE, _text, "Converting coordinates to vector3", x, y, z)
         return Vector3(x, y, z)
     elseif y ~= nil or z ~= nil then
-        error("Invalid coordinates for WalkTo", CallerName(false), "Must provide either vec3 or x,y,z", "x:", x,
+        error("Invalid coordinates for WalkTo", "Must provide either vec3 or x,y,z", "x:", x,
             "y:", y, "z:", z)
     else
         log_(LEVEL_VERBOSE, _text, "Assuming provided value is already a vector3:", x)
@@ -2842,7 +2862,7 @@ function WalkTo(x, y, z, range)
         p = await(IPC.vnavmesh.Pathfind(Player.Entity.Position, pos, false))
     end
     if p.Count == 0 then
-        error("No path found", CallerName(false), "x:", x, "y:", y, "z:", z, "range:", range)
+        error("No path found", "x:", x, "y:", y, "z:", z, "range:", range)
     end
     log_(LEVEL_VERBOSE, _text, "Walking to", pos, "with range", range)
     if path_length(p) > SPRINT_THRESHOLD then
@@ -2855,7 +2875,7 @@ function WalkTo(x, y, z, range)
     IPC.vnavmesh.MoveTo(p, false)
 
     while (IPC.vnavmesh.IsRunning() or IPC.vnavmesh.PathfindInProgress()) do
-        CheckTimeout(30, ti, CallerName(false), "Waiting for pathfind")
+        CheckTimeout(30, ti, "Waiting for pathfind")
         if range ~= nil and Vector3.Distance(Player.Entity.Position, pos) <= range then
             log_(LEVEL_VERBOSE, _text, "Stopping path because within range", range, "of target")
             IPC.vnavmesh.Stop()
@@ -2930,7 +2950,7 @@ function RunVislandRoute(route_b64, wait_message)
 
     IPC.visland.StartRoute(route_b64, true)
     if not IPC.visland.IsRouteRunning() then
-        error("Failed to start route", CallerName(), "Is visland enabled?")
+        error("Failed to start route", "Is visland enabled?")
     end
     repeat
         CheckTimeout(5 * 60, ti)
@@ -2985,7 +3005,7 @@ function get_closest_entity(name, critical)
     end
     local closest = raw_closest_thing(by_name(name), direct_distance)
     if critical and closest == nil then
-        error("No entity found", CallerName(false), "Name:", name)
+        error("No entity found", "Name:", name)
     end
     return EntityWrapper(closest)
 end
@@ -2998,7 +3018,7 @@ function closest_aethershard(critical)
     critical = default(critical, true)
     local closest = raw_closest_thing(is_aethershard, path_dist_to_obj(Player.CanFly))
     if critical and closest == nil then
-        error("No aethershard found", CallerName(false))
+        error("No aethershard found")
     end
     return closest
 end
@@ -3191,7 +3211,7 @@ end
 --]]
 function ice_setting(name, value)
     if type(name) ~= "string" then
-        error("Bad setting name type", CallerName(false), "Settings names are strings, not", type(name), name)
+        error("Bad setting name type", "Settings names are strings, not", type(name), name)
     end
     if type(value) == "boolean" then
         log_(LEVEL_DEBUG, _text, "Setting boolean", name, "to", value)
@@ -3200,7 +3220,7 @@ function ice_setting(name, value)
         log_(LEVEL_DEBUG, _text, "Setting number", name, "to", value)
         ice_change_number(name, value)
     else
-        error("Bad setting type", CallerName(false), "Unexpected settings type", type(value), value)
+        error("Bad setting type", "Unexpected settings type", type(value), value)
     end
 end
 
@@ -3337,10 +3357,10 @@ end
 function reapply_gearset(gs)
     local ti = ResetTimeout()
     repeat
-        CheckTimeout(10, ti, CallerName(false), "Failed to reapply gearset")
+        CheckTimeout(10, ti, "Failed to reapply gearset")
         local target_gs = Player.GetGearset(gs)
         if not target_gs.IsValid then
-            error("Invalid Gearset", CallerName(false), "Original gearset is not valid, cannot reapply")
+            error("Invalid Gearset", "Original gearset is not valid, cannot reapply")
         end
         target_gs:Equip()
         wait(0.3)
@@ -3361,7 +3381,7 @@ function report_research_safe()
     local need_swap = is_moon_tool_equiped()
     if need_swap then
         if not equip_some_other_job(Player.Gearset.ClassJob) then
-            error("No Other Job", CallerName(false),
+            error("No Other Job",
                 "Need to change gearset to hand in tool but no gearsets for other jobs were found")
         end
     end
@@ -3401,7 +3421,7 @@ end
 
 function start_fisher_mission(number)
     if ice_current_state() ~= "Idle" then
-        error("Invalid State", CallerName(false), "ICE should be idle to initialize proplerly")
+        error("Invalid State", "ICE should be idle to initialize proplerly")
     end
     set_missions(number)
 
@@ -3454,7 +3474,7 @@ function get_relic_exp(max)
     open_addon("WKSToolCustomize", "WKSHud", true, 15)
     local addon = Addons.GetAddon("WKSToolCustomize")
     if not addon.Exists or not addon.Ready then
-        error("No WKS Tool", CallerName(false), "Failed to get the research screen")
+        error("No WKS Tool", "Failed to get the research screen")
     end
     local completed = true
     local EXP_COUNT = 5
@@ -3482,7 +3502,7 @@ end
 function get_lunar_credits()
     local addon = Addons.GetAddon("WKSHud")
     if not addon.Exists or not addon.Ready then
-        error("No WKS Hud", CallerName(false), "Failed to get the HUD")
+        error("No WKS Hud", "Failed to get the HUD")
     end
 
     return tonumber(addon:GetAtkValue(6).ValueString)
@@ -3529,7 +3549,7 @@ function fish_relic(max)
                 elseif t == 3 or t == 4 or t == 5 then
                     start_fisher_mission(988)
                 else
-                    error("Bad State", CallerName(false), "Unexpected research type", t)
+                    error("Bad State", "Unexpected research type", t)
                 end
                 break
             end
