@@ -1031,6 +1031,19 @@ function is_item_equip_slot(slot)
     end
 end
 
+function item_in_categories(category)
+    if type(category) ~= "table" then
+        category = { category }
+    end
+    return function(item)
+        local cat = luminia_row_checked("item", item.ItemId).ItemUICategory
+        if cat.RowId == 0 then
+            return nil
+        end
+        return list_contains(category, cat.Name)
+    end
+end
+
 function pred_all(...)
     local pred_list = table.pack(...)
     return function(item)
@@ -1056,6 +1069,17 @@ function pred_any(...)
         end
         return false
     end
+end
+
+function desynth_all(i)
+    while i.Count > 0 do
+        i:Desynth()
+        wait_ready(3, .2, true, .1)
+    end
+end
+
+function desynth_category(category)
+    foreach_item(ALL_INVENTORY, item_in_categories(category), desynth_all)
 end
 
 function restock_crystals(target)
@@ -1198,6 +1222,34 @@ function move_items(source_inv, dest_inv, pred, count)
     return count <= 0 -- all items if any were able to be moved
 end
 
+function foreach_item(source_inv, pred, callback)
+    if pred == nil then
+        error("Predicate must be provided")
+    end
+    if source_inv == nil then
+        error("Source inventory must be provided")
+    end
+    if callback == nil then
+        error("Callback must be provided")
+    end
+    if type(source_inv) ~= "table" then
+        source_inv = { source_inv }
+    end
+    for _, inv in pairs(source_inv) do
+        local sourceinv = Inventory.GetInventoryContainer(inv)
+        if sourceinv == nil then
+            error("No inventory", inv)
+        else
+            for item in luanet.each(sourceinv.Items) do
+                long_task_delay()
+                if pred(item) then
+                    callback(item)
+                end
+            end
+        end
+    end
+end
+
 function make_armory_space(amount, armory_slots, allowed_move)
     armory_slots = default(armory_slots, ALL_ARMORY)
     local success = true
@@ -1278,7 +1330,11 @@ function collect_reward_mail()
 end
 
 function entrust_glamours()
-    lifestream_command_blocking("inn")
+    if have_plugin("AutoDuty") then -- ad's in nav works better because it accounts for where you already are.. TODO: implement that directly to avoid dependency on ad
+        wait_ad("goto inn")
+    else
+        lifestream_command_blocking("inn")
+    end
     local p1 = Entity.GetEntityByName("Armoire")
     if p1 == nil then
         error("Armoire Missing", "Couldn't find Armoire entity")
@@ -1392,6 +1448,13 @@ function ar_is_active(buffer_time)
         IPC.AutoRetainer.IsBusy() or
         ar_multi_mode_would_start(buffer_time)
     )
+end
+
+function ar_stop_soon()
+    while ar_is_active() do
+        wait(10)
+    end
+    yield('/ays multi disable')
 end
 
 function ar_add_unconditional_sell(plan_name, itemid)
@@ -1891,6 +1954,7 @@ function change_character(char, world)
     end
 
     lifestream_command_blocking(target)
+    --    wait_ready(nil, 5, true, .5)
     log_(LEVEL_DEBUG, _text, "Ready!")
 end
 
@@ -1920,40 +1984,44 @@ function wait_ready(max_wait, seconds_ready, stationary, interval)
     else
         log_(LEVEL_ERROR, _text, "Player.Entity is nil - init")
     end
-    if max_wait ~= nil then
-        ti = ResetTimeout()
-    end
     repeat
         if ti ~= nil then
             CheckTimeout(max_wait, ti, "wait_ready timed out with ready time", os.clock() - ready_time,
                 "and target", seconds_ready)
         end
         wait(interval)
-        local player = Player.Entity
-        if player ~= nil then
-            local position = player.Position
-            if position ~= nil then
-                if p ~= nil then
-                    ---@diagnostic disable-next-line: undefined-field  Vector3.Distance exists....
-                    if is_busy() or (stationary and Vector3.Distance(p, position) > interval) then
-                        log_(LEVEL_DEBUG, _text, "not ready resetting clock")
+        if max_wait ~= nil and (IPC.vnavmesh.BuildProgress() > 0) then
+            -- mesh build time doesnt count
+            log_(LEVEL_DEBUG, _text, "Mesh build in progress, resetting clock and timeout")
+            ti = ResetTimeout()
+            ready_time = os.clock()
+        else
+            local player = Player.Entity
+            if player ~= nil then
+                local position = player.Position
+                if position ~= nil then
+                    if p ~= nil then
+                        ---@diagnostic disable-next-line: undefined-field  Vector3.Distance exists....
+                        if is_busy() or (stationary and Vector3.Distance(p, position) > interval) then
+                            log_(LEVEL_DEBUG, _text, "not ready resetting clock")
+                            p = position
+                            ready_time = os.clock()
+                        else
+                            log_(LEVEL_DEBUG, _text, "ready tick", os.clock() - ready_time, "target", seconds_ready)
+                        end
+                    else
                         p = position
                         ready_time = os.clock()
-                    else
-                        log_(LEVEL_DEBUG, _text, "ready tick", os.clock() - ready_time, "target", seconds_ready)
+                        log_(LEVEL_DEBUG, _text, "Initial position was nil, setting")
                     end
                 else
-                    p = position
                     ready_time = os.clock()
-                    log_(LEVEL_DEBUG, _text, "Initial position was nil, setting")
+                    log_(LEVEL_ERROR, _text, "Player.Entity.Position is nil")
                 end
             else
                 ready_time = os.clock()
-                log_(LEVEL_ERROR, _text, "Player.Entity.Position is nil")
+                log_(LEVEL_ERROR, _text, "Player.Entity is nil")
             end
-        else
-            ready_time = os.clock()
-            log_(LEVEL_ERROR, _text, "Player.Entity is nil")
         end
     until os.clock() - ready_time >= seconds_ready
 end
@@ -2179,6 +2247,15 @@ end
 --------------------
 -- Error Handling --
 --------------------
+
+function have_plugin(plugin_name)
+    for p in luanet.each(Svc.PluginInterface.InstalledPlugins) do
+        if p.IsLoaded and p.InternalName == plugin_name then
+            return true
+        end
+    end
+    return false
+end
 
 function require_plugins(plugins)
     if #plugins == 0 then
