@@ -2645,5 +2645,730 @@ end
 ================================================================================
 ]]
 
+--[[
+================================================================================
+  BEGIN IMPORT: path_helpers.lua
+================================================================================
+]]
 
+-- Skipped import: utils.lua
+-- Skipped import: luasharp.lua
+-- Skipped import: hard_ipc.lua
+import "System.Numerics"
+import "System"
+
+local SPRINT_THRESHOLD = 10
+local WALK_THRESHOLD = 35
+local FLY_THRESHOLD = 100
+
+
+local function should_fly(dist)
+    --far enough
+    if dist > FLY_THRESHOLD then
+        return true
+    end
+    --already mounted, fly unless were right there
+    if GetCharacterCondition(4) and dist > SPRINT_THRESHOLD then
+        return true
+    end
+    return false
+end
+
+-- TODO: pathfind to get accurate distance, can we do that in a zone were not in?
+-- TODO: Option for flight in zones that allow it
+function smart_path(place_name, x, y, z)
+    local mains, nets = load_aether_info()
+    local goal_point = xyz_to_vec3(x, y, z)
+    local nearest_shard = nil
+    local shard_distance = math.maxinteger
+    for _, info in pairs(nets) do
+        if info.TerritoryName == place_name then
+            if not info.Invisible then
+                local dist = Vector3.Distance(info.Position, goal_point)
+                if dist < shard_distance then
+                    nearest_shard = info
+                    shard_distance = dist
+                end
+            end
+        end
+    end
+    local nearest_main = nil
+    local main_distance = math.maxinteger
+    for _, info in pairs(mains) do
+        if info.TerritoryName == place_name then
+            local dist = Vector3.Distance(info.Position, goal_point)
+            if dist < main_distance then
+                nearest_main = info
+                main_distance = dist
+            end
+        end
+    end
+    if nearest_shard == nil then
+        if nearest_main == nil then
+            if luminia_row_checked("TerritoryType", Svc.ClientState.TerritoryType).PlaceName.Name == place_name then
+                log_(LEVEL_INFO, _text, "No shard or main crystal, walking")
+                WalkTo(x, y, z)
+                return
+            end
+            error("NoRoute", "Could not find any aether crystals or shards in", place_name)
+        end
+        log_(LEVEL_INFO, _text, "No shard, using main crystal to", nearest_main.TerritoryName, "via", nearest_main.Name)
+        TownPath(nearest_main.Name, x, y, z, nil, nearest_main.TerritoryName)
+        return
+    end
+    if shard_distance > main_distance then
+        log_(LEVEL_INFO, _text, "Main crystal closer than any shard moving to", nearest_main.TerritoryName, "via",
+            nearest_main.Name)
+        TownPath(nearest_main.Name, x, y, z, nil, nearest_main.TerritoryName)
+        return
+    end
+    local dest_town = place_name
+    local main_town = nil
+    for _, info in pairs(mains) do
+        if nearest_shard.Group == info.Group then
+            main_town = info.Name
+            break
+        end
+    end
+    local others = {}
+    for _, info in pairs(nets) do
+        if nearest_shard.Group == info.Group and not info.Invisible then
+            if not (info.TerritoryName == dest_town or
+                    info.TerritoryName == main_town or
+                    list_contains(others, info.TerritoryName)) then
+                table.insert(others, info.TerritoryName)
+            end
+        end
+    end
+    log_(LEVEL_INFO, _text, "Aethernet routing to", nearest_shard.Name, "in", dest_town, "via", main_town)
+    log_(LEVEL_DEBUG, _table, others, "Alternate locations")
+    TownPath(main_town, x, y, z, nearest_shard, dest_town, table.unpack(others))
+end
+
+function TownPath(town, x, y, z, shard, dest_town, ...)
+    local alt_zones = { town, dest_town, ... }
+    dest_town = default(dest_town, town)
+    wait_ready(10, 1)
+    local current_town = luminia_row_checked("TerritoryType", Svc.ClientState.TerritoryType).PlaceName.Name
+    if list_contains(alt_zones, current_town) then
+        log_(LEVEL_DEBUG, _text, "Already in", current_town)
+    else
+        log_(LEVEL_DEBUG, _text, "Moving to", town, "from", current_town)
+        repeat
+            running_lifestream = true
+            IPC.Lifestream.ExecuteCommand(tostring(town))
+            wait(1)
+        until Player.Entity.IsCasting
+        ZoneTransition()
+    end
+
+    if shard ~= nil then
+        if type(shard) ~= "table" then
+            local _, shards = load_aether_info()
+            for _, info in pairs(shards) do
+                if info.Name == shard then
+                    shard = info
+                    break
+                end
+            end
+        end
+        local nearest_shard = closest_aether_group_member(shard.Group)
+        if nearest_shard ~= nil then
+            local shard_pos = nearest_shard.Position
+            local shard_dataid = nearest_shard.DataId
+            local shard_name = luminia_row_checked("Aetheryte", shard_dataid).AethernetName.Name
+            if current_town == dest_town and path_distance_to(Vector3(x, y, z)) < path_distance_to(shard_pos) then
+                log_(LEVEL_DEBUG, _text, "Already nearer to", x, y, z, "than to aethernet", shard_name)
+            elseif shard_name == shard.Name then
+                log_(LEVEL_DEBUG, _text, "Nearest shard is already", shard_name)
+            else
+                log_(LEVEL_DEBUG, _text, "Walking to shard", shard_dataid, shard_name, "to warp to", shard.Name)
+                WalkTo(shard_pos, nil, nil, 7)
+                running_lifestream = true
+                IPC.Lifestream.ExecuteCommand(tostring(shard.Name))
+                ZoneTransition()
+            end
+        end
+    end
+
+    WalkTo(x, y, z)
+end
+
+local aether_info = nil
+local net_info = nil
+function load_aether_info()
+    if aether_info == nil or net_info == nil then
+        aether_info = {}
+        net_info = {}
+        local sheet = Excel.GetSheet("Aetheryte")
+        for r = 0, sheet.Count - 1 do
+            long_task_delay()
+            local row = sheet[r]
+            if Instances.Telepo:IsAetheryteUnlocked(r) then
+                if row.IsAetheryte then
+                    aether_info[row.RowId] = {
+                        AetherId = row.RowId,
+                        Name = row.PlaceName.Name,
+                        TerritoryId = row.Territory.RowId,
+                        TerritoryName = row.Territory.PlaceName.Name,
+                        Position = Instances.Telepo:GetAetherytePosition(r),
+                        Group = row.AethernetGroup,
+                    }
+                end
+                if row.AethernetName.RowId ~= 0 then
+                    net_info[row.RowId] = {
+                        Group = row.AethernetGroup,
+                        Name = row.AethernetName.Name,
+                        TerritoryId = row.Territory.RowId,
+                        TerritoryName = row.Territory.PlaceName.Name,
+                        Position = Instances.Telepo:GetAetherytePosition(r),
+                        Invisible = row.Invisible,
+                    }
+                end
+            end
+        end
+    end
+    return aether_info, net_info
+end
+
+function nearest_aetherite(territory_id, goal_point)
+    local closest = nil
+    local distance = nil
+    for _, row in pairs(load_aether_info()) do
+        if row.TerritoryId == territory_id then
+            local d = Vector3.Distance(goal_point, row.Position)
+            if closest == nil or d < distance then
+                closest = row
+                distance = d
+            end
+        end
+    end
+
+    return closest
+end
+
+function random_real(lower, upper)
+    if not default(random_is_seeded, false) then
+        random_is_seeded = true
+        math.randomseed()
+    end
+    return math.random() * (upper - lower) + lower
+end
+
+function warp_near_point(spot, radius, territory_id, fly)
+    fly = default(fly, false)
+    if Svc.ClientState.TerritoryType ~= territory_id then
+        local a = nearest_aetherite(territory_id, spot)
+        if a == nil then
+            error("NoAetheryte", "No aetherite found for", territory_id)
+        end
+        repeat
+            Instances.Telepo:Teleport(a.AetherId, 0) -- IDK what the sub index is. if things break its probably that.
+            wait(1)
+        until Player.Entity.IsCasting
+        ZoneTransition()
+    end
+    move_near_point(spot, radius, fly)
+    land_and_dismount()
+end
+
+function net_near_point(spot, radius, fly)
+    fly = default(fly, false)
+    move_near_point(spot, radius, fly)
+    land_and_dismount()
+end
+
+function move_near_point(spot, radius, fly)
+    running_vnavmesh = true
+    fly = default(fly, false)
+    local distance = random_real(0, radius)
+    local angle = random_real(0, math.pi * 2)
+    local target = Vector3(spot.X + distance * math.sin(angle), spot.Y, spot.Z + distance * math.cos(angle))
+    local result, fly_result
+    target.Y = target.Y + 0.5
+    if fly then
+        log_(LEVEL_DEBUG, _text, "Looking for mesh point in range", radius, "of", target)
+        fly_result = IPC.vnavmesh.NearestPoint(target, radius, radius)
+        if fly_result == nil then
+            log_(LEVEL_DEBUG, _text, "No mesh point found in range", radius, "of", target, "using original target")
+            fly_result = target
+        end
+    end
+    log_(LEVEL_DEBUG, _text, "Looking for floor point in range", radius, "of", target)
+    result = IPC.vnavmesh.PointOnFloor(target, false, radius)
+
+    if result == nil and (not fly or fly_result == nil) then
+        log_(LEVEL_ERROR, _text, "No valid point found in range", radius, "of", spot, "searched from", target)
+        return false
+    end
+    log_(LEVEL_DEBUG, _text, "Found point in area", result, fly_result)
+    local path, fly_path
+    if fly_result == nil or not should_fly(Vector3.Distance(Player.Entity.Position, result)) then
+        path = pathfind_with_tolerance(result, false, radius)
+    end
+    if fly_result ~= nil and (path == nil or should_fly(path_length(path))) then
+        fly_path = pathfind_with_tolerance(fly_result, true, radius)
+        if fly_path ~= nil then
+            log_(LEVEL_DEBUG, _list, fly_path, "Flying path")
+            walk_path(fly_path, true, radius, 0.01, spot)
+            return true
+        end
+        log_(LEVEL_ERROR, _text, "Should fly, but no valid flying path found")
+    end
+    if path ~= nil then
+        log_(LEVEL_DEBUG, _list, path, "Walking path")
+        walk_path(path, false, radius, 0.01, spot)
+    end
+    log_(LEVEL_ERROR, _text, "No valid path found")
+    return false
+end
+
+function jump_to_point(p, runup, retry)
+    running_vnavmesh = true
+    p = xyz_to_vec3(table.unpack(p))
+    runup = default(runup, .1)
+    retry = default(retry, false)
+    local start_pos = Player.Entity.Position
+    local last_pos = Player.Entity.Position
+    local stuck = nil
+    custom_path(false, { p })
+    repeat
+        wait(0)
+        if Vector3.Distance(last_pos, Player.Entity.Position) < 0.01 then
+            if stuck == nil then
+                stuck = os.clock()
+            elseif os.clock() - stuck > .25 then
+                log("Didnt move from start pos, jumping anyway")
+                break
+            end
+        else
+            last_pos = Player.Entity.Position
+            stuck = nil
+        end
+    until Vector3.Distance(Player.Entity.Position, start_pos) > runup or not IPC.vnavmesh.IsRunning()
+    if not IPC.vnavmesh.IsRunning() then
+        error("Failed to jump", "to point", p)
+    end
+    Actions.ExecuteGeneralAction(2)
+    local retries = 0
+    while IPC.vnavmesh.IsRunning() or Player.IsBusy do
+        wait(0.1)
+        if Vector3.Distance(last_pos, Player.Entity.Position) < 0.01 then
+            if stuck == nil then
+                stuck = os.clock()
+            elseif os.clock() - stuck > .25 then
+                if retry and retries < 5 then
+                    log("Stuck during jump, retrying", retries + 1)
+                    retries = retries + 1
+                    Actions.ExecuteGeneralAction(2)
+                else
+                    error("Stuck during jump", "to point", p, "Landed at", Player.Entity
+                        .Position)
+                end
+            end
+        else
+            last_pos = Player.Entity.Position
+            stuck = nil
+        end
+    end
+    if Vector3.Distance(Player.Entity.Position, p) > 3.0 then
+        error("Missed jump", "to point", p, "Landed at", Player.Entity.Position)
+    end
+    custom_path(false, { p })
+    while IPC.vnavmesh.IsRunning() or Player.IsBusy do
+        wait(0.1)
+    end
+    if Vector3.Distance(Player.Entity.Position, p) > 3.0 then
+        error("Fell during reposition", "to point", p, "Landed at", Player.Entity.Position)
+    end
+end
+
+function move_to_point(p)
+    running_vnavmesh = true
+    p = xyz_to_vec3(table.unpack(p))
+    custom_path(false, { p })
+    local last_pos = Player.Entity.Position
+    local stuck = nil
+    while IPC.vnavmesh.IsRunning() or Player.IsBusy do
+        wait(0.1)
+        if Vector3.Distance(last_pos, Player.Entity.Position) < 0.01 then
+            if stuck == nil then
+                stuck = os.clock()
+            elseif os.clock() - stuck > .25 then
+                error("Stuck during walk", "to point", p, "Landed at", Player.Entity.Position)
+            end
+        else
+            last_pos = Player.Entity.Position
+            stuck = nil
+        end
+    end
+end
+
+function walk_path(path, fly, range, stop_if_stuck, ref_point, max_stuck_time)
+    local stuck_start = os.clock()
+    running_vnavmesh = true
+    max_stuck_time = default(max_stuck_time, 1)
+    stop_if_stuck = default(stop_if_stuck, false)
+    ref_point = default(ref_point, path[path.Count - 1])
+    local ti = ResetTimeout()
+    IPC.vnavmesh.MoveTo(path, fly)
+    if not GetCharacterCondition(4) and (fly or path_length(path) > WALK_THRESHOLD) then
+        Actions.ExecuteGeneralAction(9)
+    end
+    local last_pos
+    while (IPC.vnavmesh.IsRunning() or IPC.vnavmesh.PathfindInProgress()) do
+        CheckTimeout(60, ti, "Waiting for pathfind")
+        local cur_pos = Player.Entity.Position
+        if range ~= nil and Vector3.Distance(cur_pos, ref_point) <= range then
+            IPC.vnavmesh.Stop()
+        end
+        if not fly or GetCharacterCondition(4) then
+            local now = os.clock()
+            if stop_if_stuck and Vector3.Distance(last_pos, cur_pos) < stop_if_stuck then
+                if stuck_start + max_stuck_time < now then
+                    log_(LEVEL_ERROR, _text, "Antistuck triggered!")
+                    IPC.vnavmesh.Stop()
+                end
+            else
+                stuck_start = now
+                last_pos = cur_pos
+            end
+        end
+        wait(0.1)
+    end
+end
+
+function land_and_dismount()
+    if not GetCharacterCondition(4) then
+        return
+    end
+    if GetCharacterCondition(77) then
+        running_vnavmesh = true
+        local floor = IPC.vnavmesh.NearestPoint(Player.Entity.Position, 20, 20)
+        IPC.vnavmesh.PathfindAndMoveTo(floor, true)
+        local t = os.clock()
+        while (IPC.vnavmesh.IsRunning() or IPC.vnavmesh.PathfindInProgress()) and os.clock() - t < 2 do
+            wait(.1)
+        end
+        IPC.vnavmesh.Stop()
+    end
+    while GetCharacterCondition(4) do
+        Actions.ExecuteGeneralAction(23)
+        wait(.1)
+    end
+end
+
+function custom_path(fly, waypoints)
+    running_vnavmesh = true
+    local vec_waypoints = {}
+    log_(LEVEL_DEBUG, _text, "Setting up")
+    log_(LEVEL_DEBUG, _table, vec_waypoints)
+    log_(LEVEL_DEBUG, _table, waypoints, "Waypoints:")
+    for i, waypoint in pairs(waypoints) do
+        if type(waypoint) == "table" then
+            local x, y, z = table.unpack(waypoint)
+            vec_waypoints[i] = Vector3(x, y, z)
+        elseif type(waypoint) == "userdata" then -- it better be a vector3
+            vec_waypoints[i] = waypoint
+        else
+            error("Invalid waypoint type", "Type:", type(waypoint))
+        end
+    end
+    log_(LEVEL_DEBUG, _text, "Calling moveto")
+    log_(LEVEL_DEBUG, _table, vec_waypoints)
+    local list_waypoints = make_list("System.Numerics.Vector3", table.unpack(vec_waypoints))
+    log_(LEVEL_DEBUG, _text, "List waypoints:", list_waypoints)
+    log_(LEVEL_DEBUG, _list, list_waypoints)
+    IPC.vnavmesh.MoveTo(list_waypoints, fly)
+end
+
+function xyz_to_vec3(x, y, z)
+    if y ~= nil and z ~= nil then
+        log_(LEVEL_VERBOSE, _text, "Converting coordinates to vector3", x, y, z)
+        return Vector3(x, y, z)
+    elseif y ~= nil or z ~= nil then
+        error("Invalid coordinates for WalkTo", "Must provide either vec3 or x,y,z", "x:", x,
+            "y:", y, "z:", z)
+    else
+        log_(LEVEL_VERBOSE, _text, "Assuming provided value is already a vector3:", x)
+        return x
+    end
+end
+
+function WalkTo(x, y, z, range)
+    running_vnavmesh = true
+    local pos = xyz_to_vec3(x, y, z)
+    local ti = ResetTimeout()
+    local p
+    if range ~= nil then
+        log_(LEVEL_VERBOSE, _text, "Finding path to", pos, "with range", range)
+        p = pathfind_with_tolerance(pos, false, range)
+    else
+        log_(LEVEL_VERBOSE, _text, "Finding path to", pos)
+        p = await(IPC.vnavmesh.Pathfind(Player.Entity.Position, pos, false))
+    end
+    if p.Count == 0 then
+        error("No path found", "x:", x, "y:", y, "z:", z, "range:", range)
+    end
+    log_(LEVEL_VERBOSE, _text, "Walking to", pos, "with range", range)
+    if path_length(p) > SPRINT_THRESHOLD then
+        log_(LEVEL_VERBOSE, _text, "Path is long, sprinting")
+        Actions.ExecuteGeneralAction(4)
+    else
+        log_(LEVEL_VERBOSE, _text, "Path is short, walking normally")
+    end
+
+    IPC.vnavmesh.MoveTo(p, false)
+
+    while (IPC.vnavmesh.IsRunning() or IPC.vnavmesh.PathfindInProgress()) do
+        CheckTimeout(30, ti, "Waiting for pathfind")
+        if range ~= nil and Vector3.Distance(Player.Entity.Position, pos) <= range then
+            log_(LEVEL_VERBOSE, _text, "Stopping path because within range", range, "of target")
+            IPC.vnavmesh.Stop()
+        end
+        wait(0.1)
+    end
+    log_(LEVEL_VERBOSE, _text, "Arrived at", pos)
+end
+
+function pathfind_with_tolerance(vec3, fly, tolerance)
+    running_vnavmesh = true
+    require_ipc('vnavmesh.Nav.PathfindWithTolerance',
+        'System.Threading.Tasks.Task`1[System.Collections.Generic.List`1[System.Numerics.Vector3]]',
+        {
+            'System.Numerics.Vector3',
+            'System.Numerics.Vector3',
+            'System.Boolean',
+            'System.Single'
+        }
+    )
+    res = await(invoke_ipc('vnavmesh.Nav.PathfindWithTolerance', Player.Entity.Position, vec3, fly, tolerance))
+    if res == nil or res.Count == 0 then
+        log_(LEVEL_DEBUG, _text, "No path found to", vec3, "fly:", fly, "tolerance:", tolerance, "res:", res)
+        return nil
+    end
+    return res
+end
+
+function ZoneTransition()
+    local ti = ResetTimeout()
+    repeat
+        CheckTimeout(30, ti, "ZoneTransition", "Waiting for zone transition to start")
+        wait(0.1)
+    until not Player.Entity.IsCasting
+    log_(LEVEL_DEBUG, _text, "Not casting")
+    repeat
+        CheckTimeout(30, ti, "ZoneTransition", "Waiting for zone transition to start")
+        wait(0.1)
+    until not IsPlayerAvailable()
+    log_(LEVEL_DEBUG, _text, "Teleport started")
+    repeat
+        CheckTimeout(30, ti, "ZoneTransition", "Waiting for lifestream to finish")
+        wait(0.1)
+    until not IPC.Lifestream.IsBusy()
+    log_(LEVEL_DEBUG, _text, "Lifestream done")
+    repeat
+        CheckTimeout(30, ti, "ZoneTransition", "Waiting for zone transition to end")
+        while IPC.vnavmesh.BuildProgress() > 0 do
+            CheckTimeout(10 * 60, ti, "ZoneTransition", "Waiting for navmesh to finish building")
+            wait(0.1)
+        end
+        wait(0.1)
+    until IsPlayerAvailable()
+    log_(LEVEL_DEBUG, _text, "Teleport done")
+    wait_ready(30, .5, true, .1)
+    log_(LEVEL_DEBUG, _text, "Ready!")
+end
+
+function IsNearThing(thing, distance)
+    distance = default(distance, 4)
+    thing = tostring(thing)
+    local entity = get_closest_entity(thing)
+    return entity ~= nil and entity.Name == thing and entity.DistanceTo <= distance
+end
+
+function RunVislandRoute(route_b64, wait_message)
+    running_visland = true
+    local ti = ResetTimeout()
+    wait_message = default(wait_message, "Running route")
+    log(wait_message)
+    IPC.visland.StopRoute()
+
+    IPC.visland.StartRoute(route_b64, true)
+    if not IPC.visland.IsRouteRunning() then
+        error("Failed to start route", "Is visland enabled?")
+    end
+    repeat
+        CheckTimeout(5 * 60, ti)
+        log(wait_message)
+        yield("/wait 1")
+    until not IPC.visland.IsRouteRunning()
+end
+
+function StartRouteToTarget()
+    running_vnavmesh = true
+    if not HasTarget() then
+        log("No target to route to")
+        return false
+    end
+    local ti = ResetTimeout()
+
+    yield("/vnav movetarget")
+    repeat
+        wait(.1)
+        CheckTimeout(30, ti)
+    until PathIsRunning()
+end
+
+function RouteToTarget()
+    StartRouteToTarget()
+    local ti = ResetTimeout()
+
+    while PathIsRunning() do
+        CheckTimeout(5 * 60, ti)
+        wait(.5)
+    end
+end
+
+function RouteToObject(object_name, distance)
+    local ti = ResetTimeout()
+    while not IsNearThing(object_name, distance) do
+        if not PathIsRunning() and GetTargetName() == object_name then
+            StartRouteToTarget()
+        end
+        wait(.1)
+        CheckTimeout(30, ti)
+    end
+
+    PathStop()
+end
+
+---@return EntityWrapper
+function get_closest_entity(name, critical)
+    critical = default(critical, false)
+    if EntityWrapper == nil then
+        EntityWrapper = load_type('SomethingNeedDoing.LuaMacro.Wrappers.EntityWrapper')
+    end
+    local closest = raw_closest_thing(by_name(name), direct_distance)
+    if critical and closest == nil then
+        error("No entity found", "Name:", name)
+    end
+    return EntityWrapper(closest)
+end
+
+function closest_aether_group_member(group)
+    return raw_closest_thing(aether_group(group), path_dist_to_obj(Player.CanFly))
+end
+
+function closest_aethershard(critical)
+    critical = default(critical, true)
+    local closest = raw_closest_thing(is_aethershard, path_dist_to_obj(Player.CanFly))
+    if critical and closest == nil then
+        error("No aethershard found")
+    end
+    return closest
+end
+
+---------------
+--- Support ---
+---------------
+
+function raw_closest_thing(filter, distance_function)
+    distance_function = default(distance_function, direct_distance)
+    local closest = nil
+    local distance = nil
+    for i = 0, Svc.Objects.Length - 1 do
+        local obj = Svc.Objects[i]
+        if filter(obj) then
+            local t_distance = distance_function(obj)
+            if closest == nil then
+                closest = obj
+                distance = t_distance
+            elseif t_distance < distance then
+                closest = obj
+                distance = t_distance
+            end
+        end
+    end
+    return closest
+end
+
+function path_distance_to(vec3, fly)
+    fly = default(fly, false)
+    path = await(IPC.vnavmesh.Pathfind(Player.Entity.Position, vec3, fly))
+    if path.Count == 0 then -- if theres no path use the cartesian distance
+        return Vector3.Distance(Player.Entity.Position, vec3)
+    end
+    return path_length(path)
+end
+
+function path_length(path)
+    local dist = 0
+    local prev_point = Player.Entity.Position
+    for point in luanet.each(path) do
+        dist = dist + Vector3.Distance(prev_point, point)
+        prev_point = point
+    end
+    return dist
+end
+
+function path_dist_to_obj(fly)
+    return function(obj)
+        return path_distance_to(obj.Position, fly)
+    end
+end
+
+function direct_distance(obj)
+    return Vector3.Distance(Player.Entity.Position, obj.Position)
+end
+
+function is_alive(obj)
+    return obj ~= nil and not obj.IsDead
+end
+
+function by_name(name)
+    return function(obj)
+        return obj ~= nil and obj.Name.TextValue == name
+    end
+end
+
+function is_aethershard(obj)
+    if obj == nil then
+        return false
+    end
+    if SvcObjectsKind == nil then
+        SvcObjectsKind = load_type("Dalamud.Game.ClientState.Objects.Enums.ObjectKind")
+    end
+    return obj.ObjectKind == SvcObjectsKind.Aetheryte
+end
+
+function aether_group(group)
+    return function(obj)
+        if not is_aethershard(obj) then return false end
+        _, shards = load_aether_info()
+        local shard = shards[obj.DataId]
+        return shard ~= nil and shard.Group == group
+    end
+end
+
+function xz_to_floor(X, Z)
+    local position = Vector3(X, 1000, Z)
+    local floor_point = IPC.vnavmesh.NearestPoint(position, 0, 2000)
+    return floor_point
+end
+
+function xz_to_landable(X, Z, range)
+    range = default(range, 20)
+    local position = Vector3(X, 1000, Z)
+    local floor_point = IPC.vnavmesh.PointOnFloor(position, false, range)
+    return floor_point
+end
+--[[
+================================================================================
+  END IMPORT: path_helpers.lua
+================================================================================
+]]
+
+
+land_and_dismount()
 apply_phantom_buffs(Config.Get("AllowFreelancer"), Config.Get("WaitForBuff"), Config.Get("FreelancerBuff"))

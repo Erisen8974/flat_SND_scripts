@@ -6,3 +6,4 @@ extra_ipcs.lua
 hard_ipc.lua
 luasharp.lua
 inventory_buddy.lua
+path_helpers.lua
