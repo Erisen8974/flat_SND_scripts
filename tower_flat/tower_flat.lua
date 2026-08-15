@@ -230,11 +230,22 @@ function _field(o, field, ...)
         return o
     end
     local t = o:GetType()
-    local f = get_field(t, field, { private = true, static = true }, false)
+    local is_type = false
+    if o.IsClass then
+        log_(LEVEL_DEBUG, _text, "Object is a type", o)
+        t = o
+        is_type = true
+    end
+    local f = get_field(t, field, { private = true, static = true, instance = not is_type }, false)
     if f == nil then
-        f = get_property(t, field, { private = true, static = true }, false)
+        f = get_property(t, field, { private = true, static = true, instance = not is_type }, false)
         if f == nil then
             error("field or property not found", o, field)
+        end
+    end
+    if is_type then
+        if not f.IsStatic then
+            error("Cannot read non static field", field, "from type", o, "use an instance instead")
         end
     end
     local res = f:GetValue(o)
@@ -248,6 +259,18 @@ function get_plugin_instance(plugin_name, required)
     local plugin = get_plugin_raw(plugin_name, required, true)
     if plugin ~= nil then
         return _field(plugin, "instance")
+    end
+end
+
+function get_plugin_class(plugin_name, class_name, required)
+    required = default(required, true)
+    local plugin = get_plugin_raw(plugin_name, required, true)
+    if plugin ~= nil then
+        local class = plugin.Assembly:GetType(class_name)
+        if required and class == nil then
+            error("Class not found", "plugin:", plugin_name, "class:", class_name)
+        end
+        return class
     end
 end
 
@@ -546,8 +569,14 @@ function require_ipc(ipc_signature, result_type, arg_types)
     end
     if result_type == nil then
         log_(LEVEL_DEBUG, _text, "loaded action IPC", ipc_signature)
+        if not subscriber.HasAction then
+            log_(LEVEL_ERROR, _text, "Warning: IPC not ready. Is the IPC registered?", "signature:", ipc_signature)
+        end
         ipc_cache_actions[ipc_signature] = subscriber
     else
+        if not subscriber.HasFunction then
+            log_(LEVEL_ERROR, _text, "Warning: IPC not ready. Is the IPC registered?", "signature:", ipc_signature)
+        end
         log_(LEVEL_DEBUG, _text, "loaded function IPC", ipc_signature)
         ipc_cache_functions[ipc_signature] = subscriber
     end
@@ -560,14 +589,20 @@ function invoke_ipc(ipc_signature, ...)
         error("IPC not ready", "signature:", ipc_signature, "is not loaded")
     end
     if function_subscriber ~= nil then
+        if not function_subscriber.HasFunction then
+            error("IPC not ready", "signature:", ipc_signature, "function subscriber has no function")
+        end
         local result = function_subscriber:InvokeFunc(...)
         if result == function_subscriber then
             error("Function IPC failed", "signature:", ipc_signature)
         end
         return result
     end
-    -- otherwise its action IPC
 
+    -- otherwise its action IPC
+    if not action_subscriber.HasAction then
+        error("IPC not ready", "signature:", ipc_signature, "action subscriber has no action")
+    end
     local result = action_subscriber:InvokeAction(...)
     if result == action_subscriber then
         error("IPC failed", "signature:", ipc_signature)
@@ -1911,6 +1946,8 @@ end
 
 function change_character(char, world)
     reset_gearset_cache()
+
+    collectgarbage("collect")
     local ti = ResetTimeout()
     char = char_canonical_name(char)
     world = title_case(default(world, char_homeworld(char)))
