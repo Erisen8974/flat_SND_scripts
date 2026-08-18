@@ -586,6 +586,9 @@ function require_ipc(ipc_signature, result_type, arg_types)
             error("Bad argument", "argument types should be strings")
         end
         arg_types[i] = Type.GetType(v)
+        if arg_types[i] == nil then
+            error("Bad type", i, "type not found", v)
+        end
     end
     local method = get_generic_method(Svc.PluginInterface:GetType(), 'GetIpcSubscriber', arg_types)
     if method.Invoke == nil then
@@ -2963,8 +2966,9 @@ function xyz_to_vec3(x, y, z)
     end
 end
 
-function WalkTo(x, y, z, range)
+function WalkTo(x, y, z, range, allow_sprint)
     running_vnavmesh = true
+    allow_sprint = default(allow_sprint, true)
     local pos = xyz_to_vec3(x, y, z)
     local ti = ResetTimeout()
     local p
@@ -2979,7 +2983,7 @@ function WalkTo(x, y, z, range)
         error("No path found", "x:", x, "y:", y, "z:", z, "range:", range)
     end
     log_(LEVEL_VERBOSE, _text, "Walking to", pos, "with range", range)
-    if path_length(p) > SPRINT_THRESHOLD then
+    if path_length(p) > SPRINT_THRESHOLD and allow_sprint then
         log_(LEVEL_VERBOSE, _text, "Path is long, sprinting")
         Actions.ExecuteGeneralAction(4)
     else
@@ -3230,6 +3234,38 @@ function xz_to_landable(X, Z, range)
     local position = Vector3(X, 1000, Z)
     local floor_point = IPC.vnavmesh.PointOnFloor(position, false, range)
     return floor_point
+end
+
+function is_walking()
+    local c = cs_instance("FFXIVClientStructs.FFXIV.Client.Game.Control.Control")
+    return c.IsWalking
+end
+
+function set_walk(walk)
+    if is_walking() ~= walk then
+        Engines.Native.Run("/send DIVIDE")
+        local ti = ResetTimeout()
+        repeat
+            CheckTimeout(5, ti, "Waiting for walk state to change")
+            wait(.1)
+        until is_walking() == walk
+    end
+end
+
+function clear_speed_buffs()
+    Engines.Native.Run("/statusoff Sprint")
+    Engines.Native.Run("/statusoff Jog")
+    Engines.Native.Run("/statusoff Peloton")
+end
+
+function start_sprint()
+    local ti = ResetTimeout()
+    repeat
+        CheckTimeout(65, ti, "Sprint not ready after over 60 seconds?")
+        wait(1)
+    until Actions.GetActionStatus(ActionType.GeneralAction, 4) == 0
+
+    Actions.ExecuteGeneralAction(4)
 end
 --[[
 ================================================================================
